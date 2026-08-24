@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Setup for the NVIDIA Agent Toolkit labs, on a Brev A100 box.
+# Setup for the NVIDIA Agent Toolkit labs, on a Brev L40S box.
+# (Nothing here is L40S-specific — only lab 6 touches the GPU at all.)
 #
 #   curl -fsSL https://raw.githubusercontent.com/willson-nv/nvidia-agent-toolkit-labs/main/setup.sh | bash
 #

@@ -1,6 +1,8 @@
 # RUN.md — every command, and what to expect
 
-Six labs. Everything runs on one A100; labs 1 and 2 need no GPU and no credentials at all.
+Six labs on one **L40S** (see [BREV.md](BREV.md)). Only lab 6 uses the GPU — labs 1 and 2
+need no GPU, no network and no credentials at all, and labs 3–5 send inference to your
+model endpoint.
 
 > **Verification status — read this before the workshop.**
 > Nothing in this file has been executed. It is written against the documented APIs of
