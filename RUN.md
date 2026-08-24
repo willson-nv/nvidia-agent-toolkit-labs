@@ -5,9 +5,10 @@ need no GPU, no network and no credentials at all, and labs 3–5 send inference
 model endpoint.
 
 > **Verification status.**
-> **Labs 1 and 2 are verified** on the box (Relay 0.7.3, Python 3.12.14) and the outputs
-> below are real. Labs 3-6 are still written against the documented APIs and marked
-> **⚠ likely to drift** — run them before the day and replace the placeholders as you go.
+> **Labs 1-4 are verified** on the box — Relay 0.7.3 on Python 3.12.14, NeMo Gym 0.5.0 on
+> Python 3.13.15 — and every output below is real, copied from an actual run. **Labs 5 and 6
+> are still written against the documented APIs** and marked **⚠ likely to drift** — run them
+> before the day and replace the placeholders as you go.
 >
 > All three libraries ship breaking changes on a scale of weeks. Pinned versions are in
 > `setup.sh`; keep them pinned.
@@ -33,11 +34,14 @@ timing risk in the workshop.
 ```yaml
 policy_base_url: https://integrate.api.nvidia.com/v1
 policy_api_key: nvapi-...          # free, from build.nvidia.com
-policy_model_name: nvidia/nvidia-nemotron-nano-9b-v2
+policy_model_name: nvidia/nemotron-mini-4b-instruct
 ```
 
 Use `--model-type inference_provider` with this endpoint, not `openai_model`.
 `inference.nvidia.com` is NVIDIA-internal and will not resolve from a cloud box.
+
+The 4B is deliberate — it is eleven times faster than the 9B here *and* it scores 0.2 instead
+of 1.0, which is what makes Lab 4 possible. See 2.1.
 
 ---
 
@@ -144,8 +148,18 @@ is quietly inverted. **Test the failure path, not just the happy path.**
 ```yaml
 policy_base_url: https://integrate.api.nvidia.com/v1
 policy_api_key: nvapi-...          # free, from build.nvidia.com
-policy_model_name: nvidia/nvidia-nemotron-nano-9b-v2
+policy_model_name: nvidia/nemotron-mini-4b-instruct
 ```
+
+**Use the 4B, not the 9B.** Both were run on the box. The choice is not close:
+
+| model | reward | wall clock | sets up Lab 4 |
+|---|---|---|---|
+| `nvidia-nemotron-nano-9b-v2` | 1.0 | 68s (13.69 s/it) | no — nothing can move from a ceiling |
+| `nemotron-mini-4b-instruct` | **0.2** | **6s (1.17 s/it)** | yes |
+
+Eleven times faster *and* it leaves somewhere to go. A perfect score is a weak demo: the
+interesting question is always which ones failed and why.
 
 **Two terminals.** Note `inference_provider`, not `openai_model` — the NVIDIA endpoint is
 OpenAI-*compatible*, not OpenAI, and Gym has a generic server for exactly that.
@@ -160,40 +174,34 @@ gym env start --resources-server mcqa --model-type inference_provider
 # terminal 2
 gym eval run --no-serve --agent mcqa_simple_agent \
     --input resources_servers/mcqa/data/example.jsonl \
-    --output results/mcqa_rollouts.jsonl --limit 5 --num-repeats 1
+    --output results/mcqa_rollouts.jsonl --num-repeats 1
 ```
 
 **Real output** — verified on the box, NeMo Gym 0.5.0:
 
 ```
-Collecting rollouts: 100%|██████| 5/5 [01:08<00:00, 13.69s/it]
+Collecting rollouts: 100%|██████| 5/5 [00:05<00:00,  1.17s/it]
 Key metrics for mcqa_simple_agent:
 {
-    "mean/reward": 1.0,
-    "pass@1[avg-of-1]/accuracy": 100.0,
-    "pass@1/no_answer": 0.0,
-    "majority@1/accuracy": 100.0,
-    "pass@1/accuracy": 100.0
+    "mean/reward": 0.2,
+    "pass@1[avg-of-1]/accuracy": 20.0,
+    "pass@1[avg-of-1]/no_answer": 80.0,
+    "pass@1/no_answer": 80.0,
+    "majority@1/accuracy": 20.0,
+    "pass@1/accuracy": 20.0
 }
 Fully materialized inputs: results/mcqa_rollouts_materialized_inputs.jsonl
 Rollouts: results/mcqa_rollouts.jsonl
 Aggregate metrics: results/mcqa_rollouts_aggregate_metrics.json
 ```
 
-**Timing:** ~14s per task, 68s for five. Slower than it looks on paper — worth knowing so
-you keep talking rather than watching a progress bar.
+**Do not move on yet — read the second metric.** `accuracy 20`, `no_answer 80`. Not a single
+wrong-but-parseable answer. Four of five produced nothing the grader could read at all.
 
-> **⚠ A perfect score is a weak demo, and it breaks Lab 4.**
-> `mean/reward: 1.0` leaves nothing to point at, and Lab 4 works by changing the grading
-> rule and watching the number move — which cannot happen from a ceiling. Before the day,
-> get this off 1.0 by one of:
->
-> - **a harder environment** — `gpqa_diamond` or `math_with_autograder` instead of `mcqa`
-> - **a smaller model** — `nvidia/nemotron-mini-4b-instruct` will miss some
-> - **more tasks** — `--limit` higher, so at least one goes wrong
->
-> A score of 0.6-0.8 tells a far better story than 1.0, because the interesting question is
-> always *which ones failed and why*.
+That distinction is the setup for Lab 4, so plant it here: **a low score has at least two
+completely different causes**, and one number cannot tell you which. Ask the room what they
+would do next. The instinct is always "train the model." It is the wrong instinct, and Lab 4
+shows why in one command.
 
 **Three files land in `results/`.** The rollouts file is the one that matters — Lab 4
 re-reads it, and training consumes it.
@@ -203,20 +211,162 @@ with a bare `FileNotFoundError` on the materialized-inputs path, which names not
 
 ---
 
-### 2.2 Lab 4 — re-score without re-running
+### 2.2 Lab 4 — re-score without re-running ✅
+
+Lab 3 ended at **0.2**, with 80% of rows scored `no_answer`. Nothing here calls a model
+again. Every number below comes from the five rollouts already on disk.
+
+**Pass the selectors again.** Reverify is not a continuation of the run — it is a fresh
+invocation that happens to read the run's output, and it re-resolves the servers by name:
 
 ```bash
-gym eval reverify --rollouts results/mcqa_rollouts.jsonl \
-    ++mcqa.resources_servers.mcqa.grading_mode=lenient_boxed
+gym eval reverify --resources-server mcqa --model-type inference_provider \
+  --rollouts results/mcqa_rollouts.jsonl \
+  --inputs  results/mcqa_rollouts_materialized_inputs.jsonl \
+  --output  results/rv_lenient_boxed.jsonl --overwrite \
+  ++mcqa.resources_servers.mcqa.grading_mode=lenient_boxed
 ```
 
-**Expect** — the same five attempts, a different `mean/reward`, and **no model call**.
+Omit `--resources-server` and you get `No server instances are configured, so there is
+nothing to run` — which never hints that re-passing the selector is the fix.
 
-**Say:** reward is not a property of the model. It is code you own, and you can change your
-mind about it for free. Rollouts are expensive; grading them is not.
+#### Step 1 — tour the shipped grading modes
 
-**If it refuses to run:** reverify is gated on the server declaring itself safe to replay
-statelessly. That is a feature — check before forcing it.
+`MCQAResourcesServerConfig` declares four. Run the sweep. **Real numbers, verified:**
+
+| `grading_mode` | reward | no_answer |
+|---|---|---|
+| `strict_single_letter_boxed` *(default)* | 0.2 | 80% |
+| `lenient_boxed` | 0.2 | 80% |
+| `lenient_answer_colon` | **0.0** | 100% |
+| `lenient_answer_colon_md` | 0.2 | 80% |
+
+**Two things to say, and the second is the important one.**
+
+**"Lenient" is a misnomer.** These are not graduated levels of tolerance — they are four
+*different extractors*, and selecting one replaces the previous rather than relaxing it.
+`lenient_answer_colon` made the score strictly **worse**, because the one row that was
+working answered `Answer: \boxed{C}` and that mode reads the text after `Answer:` instead of
+opening the box. A mode called lenient lost the only point on the board.
+
+**`lenient_boxed` cannot help here at all,** and it is worth showing why rather than
+asserting it: it still requires a `\boxed{}` to exist and only loosens what is *inside* it.
+Four of our five rows have no box anywhere, so `_extract_boxed_inner` returns `None` before
+any leniency is reached.
+
+So: the knob shipped, you turned it through all four settings, and the score never improved.
+Now what?
+
+#### Step 2 — write your own extractor
+
+Read one failing row aloud first. Show the prompt:
+
+> *"The last line of your response should be in the following format: 'Answer: \boxed{...}'"*
+
+Then show what the model actually said: *"In summary, the correct answer is E"*. Expected
+answer: **E**. Scored **0.0**.
+
+**The grader was not measuring knowledge. It was measuring instruction-following** — and
+scoring a correct-but-unformatted answer identically to a wrong one. Nobody chose that. It
+fell out of a regex.
+
+`verify()` checks `template_metadata["output_regex"]` **before** `grading_mode` — a shipped,
+per-row extension point that takes a string or a list of patterns, tried in order, rightmost
+match wins. Exactly the "reasoning first, answer last" shape these responses have. Patch it
+onto both files; reverify reads request fields from the inputs and the response from the
+rollouts:
+
+```bash
+python - <<'PY'
+import json
+REGEX = [
+    r"correct answer is[:\s]*\(?\[?([A-J])\)?\]?",
+    r"answer is[:\s]*\(?\[?([A-J])\)?\]?",
+    r"statement\s+\(?([A-J])\)?\s+(?:is\s+)?the\s+correct",
+    r"choice\s+\(?([A-J])\)?\s+is\s+the\s+(?:best|correct)",
+    r"\banswer\s*[:\-]\s*\(?\[?([A-J])\)?\]?",
+]
+pairs = [("results/mcqa_rollouts.jsonl", "results/mcqa_rollouts_regex.jsonl"),
+         ("results/mcqa_rollouts_materialized_inputs.jsonl", "results/mcqa_inputs_regex.jsonl")]
+for src, dst in pairs:
+    n = 0
+    with open(src) as f, open(dst, "w") as o:
+        for line in f:
+            r = json.loads(line)
+            r["template_metadata"] = {"output_regex": REGEX}
+            o.write(json.dumps(r) + "\n"); n += 1
+    print(f"{dst}: {n} rows")
+PY
+```
+
+```bash
+gym eval reverify --resources-server mcqa --model-type inference_provider \
+  --rollouts results/mcqa_rollouts_regex.jsonl \
+  --inputs  results/mcqa_inputs_regex.jsonl \
+  --output  results/rv_custom_regex.jsonl --overwrite
+```
+
+No `grading_mode` override — `template_metadata` outranks it.
+
+**Real output** — verified on the box:
+
+```
+Key metrics for mcqa_simple_agent:
+{
+    "mean/reward": 0.8,
+    "pass@1[avg-of-1]/accuracy": 80.0,
+    "pass@1[avg-of-1]/no_answer": 0.0,
+    "pass@1/no_answer": 0.0,
+    "majority@1/accuracy": 80.0,
+    "pass@1/accuracy": 80.0
+}
+```
+
+**0.2 → 0.8. Zero model calls. `no_answer` 80% → 0%.**
+
+#### Step 3 — the row that stayed wrong
+
+Do not skip this. Per-row, the recovery looks like:
+
+| row | expected | recovered | |
+|---|---|---|---|
+| 0 | B | B | hit |
+| 1 | E | E | hit |
+| 2 | C | C | hit |
+| 3 | E | E | hit |
+| 4 | I | **C** | miss — confidently wrong |
+
+Row 4 was never a hard question the model failed. It answered C, it was wrong, and the
+strict grader scored that **identically to the four rows that were right**. Four of the five
+zeros belonged to the grader; exactly one belonged to the model. One number could not tell
+you which, and the fix for each is completely different — you cannot train your way out of a
+bad regex.
+
+**The close:** rollouts are expensive, grading them is not. The reward function is code you
+own, which means you can fix it for free, and it also means you can break it — as
+`lenient_answer_colon` did in step 1.
+
+#### Two traps in this lab
+
+**`_parse_answer_with_custom_regex` trusts your regex over `allowed_letters`** and will
+return a captured letter even when it is not a valid option for that question. A sloppy
+pattern manufactures answers out of prose and reports a healthy-looking score. Same quiet
+failure family as the Relay boolean guardrail and the Gym field drop: the API looks
+satisfied, the behaviour is wrong, nothing warns you.
+
+**Reverify spins up the full three-server Ray cluster** — roughly 20 seconds of startup for
+under a second of grading, then a spray of `Failed to connect to GCS ... TimedOut` warnings
+on the way down. They look like errors and are not. Tell the room to ignore the red text,
+and start talking before you press return. If the warnings persist between runs, a cluster
+from an earlier lab is still alive:
+
+```bash
+pkill -9 -f raylet; pkill -9 -f gcs_server; pkill -9 -f "ray::"
+```
+
+**Reverify is gated** on the server declaring `ReverifyMode.STATELESS`. `mcqa` does, so this
+all works. `--force` exists for servers that do not and prefixes its output `unsafe_` — the
+gate is a feature, so check why before overriding it.
 
 ---
 

@@ -181,9 +181,11 @@ cat <<EOF
 
       policy_base_url: https://integrate.api.nvidia.com/v1
       policy_api_key: nvapi-...   (free, from build.nvidia.com)
-      policy_model_name: nvidia/nvidia-nemotron-nano-9b-v2
+      policy_model_name: nvidia/nemotron-mini-4b-instruct
 
   Then use --model-type inference_provider (not openai_model).
+  The 4B is deliberate: 11x faster than the 9B here, and it scores 0.2 rather
+  than 1.0 -- which is what leaves lab 4 somewhere to go.
 
   Then follow RUN.md. Start with lab 1 -- it needs nothing and proves the box works:
 
