@@ -715,6 +715,23 @@ print(f"bit-identical: {ident}/{len(a)}   largest deviation: {worst:g}")
 PY
 ```
 
+**Real output:**
+
+```
+tensors: original=290  exported=290
+missing from export: none
+bit-identical: 290/290
+largest deviation: 0
+```
+
+**Every tensor, bit for bit.** Not "close enough in bf16" — identical. That is the line to
+say out loud, because a lossy round trip would be a perfectly reasonable thing to fear and
+this settles it in one command.
+
+**290 tensors, but 170 conversion tasks.** Someone will notice. The bridge groups parameters
+— fused QKV projections and the like — so one task can carry several Hugging Face tensors.
+Both numbers are correct.
+
 A tool reporting its own success is not evidence. Diffing every tensor is. This is also the
 habit worth leaving the room with, and it is the same one as Lab 5: **check the rows, not
 the summary.**
