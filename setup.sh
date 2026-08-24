@@ -179,9 +179,11 @@ cat <<EOF
 
   Before labs 3-5, write your model endpoint into env.yaml at the Gym repo root:
 
-      policy_base_url: https://api.openai.com/v1
-      policy_api_key: <key>
-      policy_model_name: <model>
+      policy_base_url: https://integrate.api.nvidia.com/v1
+      policy_api_key: nvapi-...   (free, from build.nvidia.com)
+      policy_model_name: nvidia/nvidia-nemotron-nano-9b-v2
+
+  Then use --model-type inference_provider (not openai_model).
 
   Then follow RUN.md. Start with lab 1 -- it needs nothing and proves the box works:
 

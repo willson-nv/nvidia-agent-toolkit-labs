@@ -31,10 +31,13 @@ timing risk in the workshop.
 **For labs 3–5** write your endpoint into `env.yaml` at the Gym repo root:
 
 ```yaml
-policy_base_url: https://api.openai.com/v1
-policy_api_key: <your key>
-policy_model_name: <a model id>
+policy_base_url: https://integrate.api.nvidia.com/v1
+policy_api_key: nvapi-...          # free, from build.nvidia.com
+policy_model_name: nvidia/nvidia-nemotron-nano-9b-v2
 ```
+
+Use `--model-type inference_provider` with this endpoint, not `openai_model`.
+`inference.nvidia.com` is NVIDIA-internal and will not resolve from a cloud box.
 
 ---
 
@@ -134,13 +137,25 @@ is quietly inverted. **Test the failure path, not just the happy path.**
 
 ## Part 2 — NeMo Gym
 
-### 2.1 Lab 3 — a rollout and a reward
+### 2.1 Lab 3 — a rollout and a reward ✅
+
+**The endpoint.** `env.yaml` at the repo root:
+
+```yaml
+policy_base_url: https://integrate.api.nvidia.com/v1
+policy_api_key: nvapi-...          # free, from build.nvidia.com
+policy_model_name: nvidia/nvidia-nemotron-nano-9b-v2
+```
+
+**Two terminals.** Note `inference_provider`, not `openai_model` — the NVIDIA endpoint is
+OpenAI-*compatible*, not OpenAI, and Gym has a generic server for exactly that.
 
 ```bash
-source /home/ubuntu/workspace/venv-gym/bin/activate
+source ~/venv-gym/bin/activate
+mkdir -p results
 
-# terminal 1 — three servers, blocks in the foreground
-gym env start --resources-server mcqa --model-type openai_model
+# terminal 1 - blocks in the foreground
+gym env start --resources-server mcqa --model-type inference_provider
 
 # terminal 2
 gym eval run --no-serve --agent mcqa_simple_agent \
@@ -148,18 +163,43 @@ gym eval run --no-serve --agent mcqa_simple_agent \
     --output results/mcqa_rollouts.jsonl --limit 5 --num-repeats 1
 ```
 
-**Expect** — three servers named on startup, then a progress bar and aggregate metrics:
+**Real output** — verified on the box, NeMo Gym 0.5.0:
 
 ```
-Collecting rollouts: 100%|██████| 5/5
+Collecting rollouts: 100%|██████| 5/5 [01:08<00:00, 13.69s/it]
 Key metrics for mcqa_simple_agent:
-{ "mean/reward": 0.8, "pass@1/accuracy": 80.0 }
+{
+    "mean/reward": 1.0,
+    "pass@1[avg-of-1]/accuracy": 100.0,
+    "pass@1/no_answer": 0.0,
+    "majority@1/accuracy": 100.0,
+    "pass@1/accuracy": 100.0
+}
+Fully materialized inputs: results/mcqa_rollouts_materialized_inputs.jsonl
+Rollouts: results/mcqa_rollouts.jsonl
+Aggregate metrics: results/mcqa_rollouts_aggregate_metrics.json
 ```
 
-Three files land in `results/`: materialised inputs, rollouts, aggregate metrics.
-**The rollouts file is the one that matters** — Lab 4 re-reads it, and training consumes it.
+**Timing:** ~14s per task, 68s for five. Slower than it looks on paper — worth knowing so
+you keep talking rather than watching a progress bar.
 
-**Two terminals.** `gym env start` does not return.
+> **⚠ A perfect score is a weak demo, and it breaks Lab 4.**
+> `mean/reward: 1.0` leaves nothing to point at, and Lab 4 works by changing the grading
+> rule and watching the number move — which cannot happen from a ceiling. Before the day,
+> get this off 1.0 by one of:
+>
+> - **a harder environment** — `gpqa_diamond` or `math_with_autograder` instead of `mcqa`
+> - **a smaller model** — `nvidia/nemotron-mini-4b-instruct` will miss some
+> - **more tasks** — `--limit` higher, so at least one goes wrong
+>
+> A score of 0.6-0.8 tells a far better story than 1.0, because the interesting question is
+> always *which ones failed and why*.
+
+**Three files land in `results/`.** The rollouts file is the one that matters — Lab 4
+re-reads it, and training consumes it.
+
+**`gym eval run` does not create its output directory.** Without `mkdir -p results` it dies
+with a bare `FileNotFoundError` on the materialized-inputs path, which names nothing useful.
 
 ---
 
