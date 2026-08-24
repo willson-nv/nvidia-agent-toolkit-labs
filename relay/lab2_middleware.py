@@ -19,6 +19,7 @@ import asyncio
 import time
 
 import nemo_relay
+from nemo_relay import ToolExecutionInterceptOutcome
 
 TOOL = "search"
 
@@ -34,25 +35,31 @@ async def search(args):
 
 
 # --- 1. sanitise: mask the key in emitted events only -----------------------
-def redact_api_key(request):
-    scrubbed = dict(request.content)
-    if "api_key" in scrubbed:
-        scrubbed["api_key"] = "***redacted***"
-    return scrubbed
+# guardrail(tool_name, args) -> the payload to RECORD on the start event.
+# Observability only: the real tool still receives the real args.
+def redact_api_key(tool_name, args):
+    return {**args, "api_key": "***redacted***"}
 
 
 # --- 2. conditional: refuse to run at all -----------------------------------
-def require_query(request):
-    """Return False to block. The tool function is never entered."""
-    return bool(str(request.content.get("query", "")).strip())
+# guardrail(tool_name, args) -> None to ALLOW, or a rejection message to BLOCK.
+# Note it is not a boolean: returning False would allow the call, because False
+# is not None. Returning a message both blocks and explains why.
+def require_query(tool_name, args):
+    if not str(args.get("query", "")).strip():
+        return "query must not be empty"
+    return None
 
 
 # --- 3. execution intercept: wrap the real call -----------------------------
-async def measure(request, next_):
+# fn(tool_name, args, next_call) -> ToolExecutionInterceptOutcome
+# The outcome type is Rust-native and exported from the nemo_relay TOP level,
+# not from nemo_relay.intercepts, despite what the register docstring implies.
+async def measure(tool_name, args, next_call):
     t0 = time.perf_counter()
-    result = await next_(request)
-    print(f"  [measure] {TOOL} took {(time.perf_counter() - t0) * 1000:.1f} ms")
-    return result
+    result = await next_call(args)
+    print(f"  [measure] {tool_name} took {(time.perf_counter() - t0) * 1000:.1f} ms")
+    return ToolExecutionInterceptOutcome(result)
 
 
 async def call(handle, query):
@@ -80,7 +87,8 @@ async def main():
         print("\n--- an empty query ---------------------------------------")
         await call(handle, "   ")
 
-    nemo_relay.subscribers.flush()
+    # flush_async, not flush: 0.7.3 refuses to block a running event loop
+    await nemo_relay.subscribers.flush_async()
     nemo_relay.subscribers.deregister("lab2-printer")
 
 

@@ -46,7 +46,8 @@ async def main():
 
     # Subscriber delivery is asynchronous. Without this flush you can reach the end
     # of the program before the events you are trying to look at have been printed.
-    nemo_relay.subscribers.flush()
+    # flush_async, not flush: 0.7.3 refuses to block a running event loop
+    await nemo_relay.subscribers.flush_async()
     nemo_relay.subscribers.deregister("lab1-printer")
 
 

@@ -4,12 +4,10 @@ Six labs on one **L40S** (see [BREV.md](BREV.md)). Only lab 6 uses the GPU — l
 need no GPU, no network and no credentials at all, and labs 3–5 send inference to your
 model endpoint.
 
-> **Verification status — read this before the workshop.**
-> Nothing in this file has been executed. It is written against the documented APIs of
-> NeMo Relay 0.7.3, NeMo Gym 0.5.0 and Megatron Bridge 0.6.0, but no run has confirmed it.
-> Treat every "expect" below as the intended shape, and **do a full dry run on the box
-> before the day**. Where a step is more likely than usual to need a tweak, it is marked
-> **⚠ likely to drift**.
+> **Verification status.**
+> **Labs 1 and 2 are verified** on the box (Relay 0.7.3, Python 3.12.14) and the outputs
+> below are real. Labs 3-6 are still written against the documented APIs and marked
+> **⚠ likely to drift** — run them before the day and replace the placeholders as you go.
 >
 > All three libraries ship breaking changes on a scale of weeks. Pinned versions are in
 > `setup.sh`; keep them pinned.
@@ -42,61 +40,95 @@ policy_model_name: <a model id>
 
 ## Part 1 — NeMo Relay
 
-### 1.1 Lab 1 — one scope, one tool call, one model call
+### 1.1 Lab 1 — one scope, one tool call, one model call ✅
 
 ```bash
-source /home/ubuntu/workspace/venv-relay/bin/activate
+source ~/venv-relay/bin/activate
 python relay/lab1_quickstart.py
 ```
 
-**Expect** — event lines for the scope, tool and model lifecycles, the `initialized` mark,
-then the two results:
+**Real output** — verified on the box, Relay 0.7.3, Python 3.12.14:
 
 ```
   event=scope  name=demo-agent
   event=mark   name=initialized
   event=scope  name=search
+  event=scope  name=search
   event=scope  name=demo-provider
-  ...
+  event=scope  name=demo-provider
   tool returned: {'echo': 'hello'}
-  model returned: {'messages': [...], 'ok': True}
+  model returned: {'messages': [{'content': 'hi', 'role': 'user'}], 'ok': True}
+  event=scope  name=demo-agent
 ```
 
-**If you see no events:** the flush at the end is doing real work — subscriber delivery is
-asynchronous. Do not remove it.
+**Each scope emits twice** — once on entry, once on exit. That is why `search` and
+`demo-provider` each appear on two lines, and why the agent scope closes last, after
+everything nested inside it has finished. Worth pointing at on screen.
 
-**Say:** no API key, no network, no observability backend, and there is still a structured
-trace of every boundary crossed.
+**No API key, no network, no observability backend** — and there is still a structured
+trace of every boundary the agent crossed.
+
+**Flush is `await flush_async()`, not `flush()`.** Relay 0.7.3 refuses to block a running
+event loop and raises a `RuntimeError` telling you so. Without the flush the process can
+exit before the subscriber has printed.
 
 ---
 
-### 1.2 Lab 2 — three middlewares ⚠ likely to drift
+### 1.2 Lab 2 — three middlewares: redact, reject, measure ✅
 
 ```bash
 python relay/lab2_middleware.py
 ```
 
-**Expect** — a good call that executes and is timed, with `api_key` masked in the emitted
-event; then an empty query that never reaches the tool function:
+**Real output** — verified on the box, Relay 0.7.3:
 
 ```
 --- a good call ------------------------------------------
-  event=scope  name=search data={'query': 'hello', 'api_key': '***redacted***'}
+  event=scope  name=demo-agent data=None
+  event=scope  name=search.require_query data={'kind': 'tool_conditional_execution', 'target_name': 'search'}
+  event=scope  name=search.require_query data={'allowed': True, 'rejected': False}
+  event=scope  name=search data={'api_key': '***redacted***', 'query': 'hello'}
   [measure] search took 0.3 ms
+  event=scope  name=search data={'hits': ['result for hello']}
   -> allowed: {'hits': ['result for hello']}
 
 --- an empty query ---------------------------------------
-  -> blocked: ...
+  event=scope  name=search.require_query data={'kind': 'tool_conditional_execution', 'target_name': 'search'}
+  event=scope  name=search.require_query data={'allowed': False, 'rejected': True, 'rejection_reason': 'query must not be empty'}
+  event=mark   name=search data={'rejected': True, 'rejection_reason': 'query must not be empty'}
+  -> blocked: RuntimeError: guardrail rejected: query must not be empty
+  event=scope  name=demo-agent data=None
 ```
 
-**Run the good call first.** The rejection only lands as a contrast.
+**The single best thing on screen: count the `search` scopes.** The good call has two —
+start carrying the redacted args, end carrying the result. The blocked call has **none**,
+only a `mark`. That is visual proof the tool function was never entered, rather than being
+logged and allowed anyway.
 
-**The distinction to labour:** the sanitiser changed what was *emitted*; the real tool still
-received the real key (there is an `assert` in the tool proving it). The conditional
-guardrail changed what *executed*.
+**Every middleware is visible in the trace.** The guardrail gets its own scope
+(`search.require_query`) whose end event carries the verdict — `allowed`, `rejected`, and
+the `rejection_reason` — and that reason propagates all the way out to the caller as a
+`RuntimeError`. Nothing is hidden.
 
-**⚠ If a registration raises `TypeError`,** the callback signatures have moved. Check the
-middleware guide for the installed version — everything else in the file is stable.
+**Redaction is observability-only.** The emitted event shows
+`api_key: '***redacted***'`, while the tool body asserts it received
+`sk-fake-not-a-real-key`. Both are true at once, and that is the point.
+
+---
+
+### Three API traps this lab found, all fixed in the file
+
+| Trap | What happens | Correct form |
+|---|---|---|
+| `subscribers.flush()` | `RuntimeError` — cannot block a running event loop | `await subscribers.flush_async()` |
+| Callback signature | `TypeError: takes 1 positional argument but 2 were given` | `callback(tool_name, args)` |
+| Conditional return | **Silent** — `return False` ALLOWS the call, because False is not None | `return None` to allow, a message to block |
+| Outcome import | `ImportError` from `nemo_relay.intercepts` | `from nemo_relay import ToolExecutionInterceptOutcome` |
+
+**The third one is the dangerous one** and worth saying out loud: returning a boolean does
+not error. The guardrail registers, runs, and permits everything. It is the same failure
+shape as the NeMo Gym silent-drop trap in Lab 5 — the API looks satisfied and the behaviour
+is quietly inverted. **Test the failure path, not just the happy path.**
 
 ---
 
