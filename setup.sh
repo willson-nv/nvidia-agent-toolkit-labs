@@ -147,6 +147,10 @@ else
   # Gym builds a venv PER SERVER -- resources, agent and model -- each installing
   # the full stack. Doing that cold during lab 5 is the biggest timing risk in the
   # workshop, so warm the shared uv cache now against a shipped environment.
+  # gym eval run does not create its output directory and dies with a bare
+  # FileNotFoundError on the materialized-inputs file if it is missing.
+  mkdir -p "$REPO/results"
+
   say "Pre-warming the uv cache (this is the slow step, and it is why lab 5 fits)"
   gym env test --resources-server example_single_tool_call \
     || warn "cache warm-up did not complete; lab 5 will be slower on first start"

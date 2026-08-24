@@ -1,1 +1,5 @@
 -e nemo-gym[dev] @ ../../
+# Gym builds a venv per server and shells out to pytest. Without these, `gym env test`
+# prints "no tests ran" and step 6 of lab 5 quietly proves nothing.
+pytest
+pytest-asyncio
