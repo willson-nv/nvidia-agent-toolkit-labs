@@ -8,7 +8,7 @@ A ticket arrives as free text. The model must answer with JSON:
 Single step, no tools, verify only. The whole environment is the verify() method
 at the bottom; everything else is boilerplate the scaffold generated.
 
-    gym env start --resources-server support_triage --model-type openai_model
+    gym env start --resources-server support_triage --model-type inference_provider
 """
 import json
 from typing import Any, Optional

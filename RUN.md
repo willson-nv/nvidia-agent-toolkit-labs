@@ -430,10 +430,10 @@ silently. `test_ground_truth_survives_parsing` is the regression test for exactl
 **Step 9 — a real reward** (~4 min)
 
 ```bash
-gym env start --resources-server support_triage --model-type openai_model   # terminal 1
+gym env start --resources-server support_triage --model-type inference_provider  # terminal 1
 gym eval run --no-serve --agent support_triage_simple_agent \
     --input resources_servers/support_triage/data/example.jsonl \
-    --output results/support_triage_rollouts.jsonl                          # terminal 2
+    --output results/support_triage_rollouts.jsonl                               # terminal 2
 ```
 
 **Expect:** a `mean/reward` between 0 and 1 across five tickets.

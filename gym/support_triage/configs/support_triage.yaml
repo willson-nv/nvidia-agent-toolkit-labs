@@ -1,10 +1,15 @@
-support_triage_resources_server:
+# The top-level key is the name `--resources-server` takes, and it must match the
+# server name nested under `resources_servers:`. The shipped environments all use
+# the same string for both (mcqa/mcqa); using two different strings here means
+# `gym env start --resources-server support_triage` cannot resolve the config.
+support_triage:
   resources_servers:
     support_triage:
       entrypoint: app.py
       domain: agent
       verified: false
       description: Single-step support-ticket triage, scored on severity and team
+      value: Route incoming tickets without a human first-pass
 
 support_triage_simple_agent:
   responses_api_agents:
@@ -12,7 +17,7 @@ support_triage_simple_agent:
       entrypoint: app.py
       resources_server:
         type: resources_servers
-        name: support_triage_resources_server
+        name: support_triage
       model_server:
         type: responses_api_models
         name: policy_model
