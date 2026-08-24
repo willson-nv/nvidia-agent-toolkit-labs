@@ -32,12 +32,18 @@ class SupportTriageVerifyRequest(BaseVerifyRequest):
     """THIS SUBCLASS IS LOAD-BEARING.
 
     Fields on a dataset row that are not declared on the request model are
-    silently dropped by Pydantic. Without `verifier_metadata` declared here, the
-    ground truth never reaches verify(), every comparison fails, and every reward
-    is 0.0 -- with no error and no warning anywhere.
+    dropped by Pydantic -- BaseVerifyRequest.model_config is {}, so plain
+    extra="ignore". Without `verifier_metadata` declared here, the ground truth
+    never reaches verify() and `body.verifier_metadata` raises AttributeError,
+    which the server returns as a 500 and which kills a `gym eval run` on row 0.
 
-    This is the single most common authoring bug in NeMo Gym. Lab 5 deletes these
-    two lines on purpose, shows the damage, then puts them back.
+    Measured, not assumed: `gym env test` gives 6 failed, 2 passed. The two that
+    still pass are the prose case and the empty-string case -- the ones asserting
+    reward == 0.0 -- because verify() returns early before reading ground truth.
+    A verifier with a completely destroyed ground-truth path still passes every
+    test that expects a zero.
+
+    Lab 5 deletes this line on purpose, shows the damage, then puts it back.
     """
     verifier_metadata: dict[str, Any]
 

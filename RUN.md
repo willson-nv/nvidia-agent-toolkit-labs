@@ -5,10 +5,10 @@ need no GPU, no network and no credentials at all, and labs 3–5 send inference
 model endpoint.
 
 > **Verification status.**
-> **Labs 1-4 are verified** on the box — Relay 0.7.3 on Python 3.12.14, NeMo Gym 0.5.0 on
-> Python 3.13.15 — and every output below is real, copied from an actual run. **Labs 5 and 6
-> are still written against the documented APIs** and marked **⚠ likely to drift** — run them
-> before the day and replace the placeholders as you go.
+> **Labs 1-5 are verified** on the box — Relay 0.7.3 on Python 3.12.14, NeMo Gym 0.5.0 on
+> Python 3.13.15 — and every output below is real, copied from an actual run. **Lab 6 is
+> still written against the documented APIs** and marked **⚠ likely to drift** — run it
+> before the day, and verify the container tag, which is still a placeholder.
 >
 > All three libraries ship breaking changes on a scale of weeks. Pinned versions are in
 > `setup.sh`; keep them pinned.
@@ -133,9 +133,10 @@ the `rejection_reason` — and that reason propagates all the way out to the cal
 | Outcome import | `ImportError` from `nemo_relay.intercepts` | `from nemo_relay import ToolExecutionInterceptOutcome` |
 
 **The third one is the dangerous one** and worth saying out loud: returning a boolean does
-not error. The guardrail registers, runs, and permits everything. It is the same failure
-shape as the NeMo Gym silent-drop trap in Lab 5 — the API looks satisfied and the behaviour
-is quietly inverted. **Test the failure path, not just the happy path.**
+not error. The guardrail registers, runs, and permits everything. Of every failure in these
+six labs this is the only one that is truly silent — Lab 5's dropped-ground-truth trap by
+contrast raises loudly, just in a terminal you are not looking at. **Test the failure path,
+not just the happy path.**
 
 ---
 
@@ -370,20 +371,45 @@ gate is a feature, so check why before overriding it.
 
 ---
 
-### 2.3 Lab 5 — build an environment for your own task
+### 2.3 Lab 5 — build an environment for your own task ✅
 
 The centrepiece. Twenty-five minutes, nine steps. A finished copy lives in
-`gym/support_triage/` — copy it in if anything stalls.
+`gym/support_triage/` — copy it in if anything stalls. **Every step below was run on the
+box; the outputs are real.**
 
 **Step 1 — scaffold** (~2 min)
 
 ```bash
 gym env init --resources-server support_triage
+find resources_servers/support_triage -type f | sort
 ```
 
-Six files appear. Walk them: `app.py`, `configs/`, `data/`, `tests/`, `requirements.txt`,
-`README.md`. Note the scaffold's `verify()` already returns `reward=1.0` — the environment
-works before you write anything.
+**Real output** — six files:
+
+```
+resources_servers/support_triage/README.md
+resources_servers/support_triage/app.py
+resources_servers/support_triage/configs/support_triage.yaml
+resources_servers/support_triage/data/.gitignore
+resources_servers/support_triage/requirements.txt
+resources_servers/support_triage/tests/test_app.py
+```
+
+The scaffold's `verify()` already returns `reward=1.0` — the environment works before you
+write anything. **And note what is missing: `data/` contains only a `.gitignore`.** No
+example data. Remember that when `validate` passes in step 5.
+
+**⚠ Keep the scaffold's `requirements.txt`.** It generates `nemo-gym[dev]`. Shipped
+environments like `mcqa` instead carry `-e nemo-gym[dev] @ ../../`, and copying that is a
+trap: those live *inside* site-packages, where `../../` is the Gym source tree. In your own
+repo `../../` is your repo root, and the editable install has nothing to point at. Append,
+never replace:
+
+```bash
+printf '\npytest\npytest-asyncio\n' >> resources_servers/support_triage/requirements.txt
+```
+
+Without those two, `gym env test` prints "no tests ran" and step 6 quietly proves nothing.
 
 **Step 2 — the verifier** (~5 min)
 
@@ -395,6 +421,11 @@ parse the JSON, compare two fields, return `hits / 2.0`.
 Set `domain: agent`. **Delete the generated `train` and `validation` dataset blocks** — they
 point at files the scaffold never created, and they require a licence field.
 
+**The top-level key must equal the server name.** Every shipped environment uses one string
+for both (`mcqa:` → `resources_servers: mcqa:`), and `--resources-server <name>` resolves
+against the top-level key. Naming them differently — `support_triage_resources_server:` over
+`support_triage:` — means the server can never start. This bit us in draft.
+
 **Step 4 — the data** (~2 min)
 
 Five rows, `responses_create_params` plus `verifier_metadata`. All synthetic.
@@ -405,8 +436,9 @@ Five rows, `responses_create_params` plus `verifier_metadata`. All synthetic.
 gym env validate --config resources_servers/support_triage/configs/support_triage.yaml
 ```
 
-**Expect:** `✓ Config is valid.` in well under a second, with no model server running.
-Note it does *not* check that your JSONL exists — it is a config check, not a data check.
+**Real output:** `✓ Config is valid.` — instant, with no server running. It does *not* check
+that your JSONL exists. The scaffold never created `data/example.jsonl` and validate passes
+anyway. **A green config check is not a working environment.**
 
 **Step 6 — test** (~4 min)
 
@@ -414,18 +446,83 @@ Note it does *not* check that your JSONL exists — it is a config check, not a 
 gym env test --resources-server support_triage
 ```
 
-**Expect:** seven parametrised cases passing — both fields right scores 1.0, one field 0.5,
-prose 0.0.
+First run builds the per-server venv — **174 packages, a few seconds**. Warm runs are
+instant (`Checked 6 packages in 11ms`).
+
+**Real output:**
+
+```
+collected 8 items
+tests/test_app.py ........                                       [100%]
+8 passed in 1.03s
+```
+
+**⚠ The response fixture is where this goes wrong.** `NeMoGymResponse` subclasses OpenAI's
+`Response`, so **eight fields are required** — `id`, `created_at`, `model`, `object`,
+`output`, `parallel_tool_calls`, `tool_choice`, `tools` — even though a verifier only ever
+reads `output`. Faking it with a `SimpleNamespace` fails all eight tests inside the fixture,
+before your `verify()` is called even once:
+
+```
+ValidationError: 1 validation error for SupportTriageVerifyRequest
+response
+  Input should be a valid dictionary or instance of NeMoGymResponse
+```
+
+Copy the shape from a shipped environment's tests rather than reverse-engineering it:
+`site-packages/resources_servers/mcqa/tests/test_app.py`.
 
 **Step 7 — break it on purpose** (~3 min)
 
-Delete `verifier_metadata` from `SupportTriageVerifyRequest` and re-run the tests.
+Comment out the one declared field and re-run the tests:
 
-**Expect:** the ground truth never arrives, every comparison fails, **every reward is 0.0 —
-with no error anywhere.** This is the most common authoring bug in NeMo Gym and it fails
-silently. `test_ground_truth_survives_parsing` is the regression test for exactly this.
+```bash
+cp resources_servers/support_triage/app.py /tmp/app.py.bak
+sed -i 's/^    verifier_metadata: dict\[str, Any\]/    # verifier_metadata: dict[str, Any]/' \
+    resources_servers/support_triage/app.py
+gym env test --resources-server support_triage 2>&1 | tail -12
+```
 
-**Step 8 — fix it** (~2 min) — put the two lines back. Tests pass again.
+**Real output — and it is not what the docs led me to expect:**
+
+```
+AttributeError: 'SupportTriageVerifyRequest' object has no attribute 'verifier_metadata'
+6 failed, 2 passed in 1.17s
+```
+
+Pydantic really does drop undeclared fields — `BaseVerifyRequest.model_config` is `{}`, so
+plain `extra="ignore"`. But reading the dropped field then raises `AttributeError`. **This
+does not fail silently.** Run it against a live eval and the run dies on row 0:
+
+```
+aiohttp.client_exceptions.ClientResponseError: 500, Internal Server Error, url='.../run'
+```
+
+**So what is the lesson? Two, and both are better than "it fails silently".**
+
+**Look at which tests still pass.** Six failed, **two passed** — the prose case and the
+empty-string case, the two that assert `reward == 0.0`. `verify()` returns early on
+unparseable output, before it ever touches ground truth. A verifier whose entire
+ground-truth path is destroyed **still passes every test that expects a zero.** Write only
+sad-path tests and this ships green.
+
+**And look at where the error is reported.** The traceback in the terminal you are watching
+is nine frames of aiohttp and asyncio ending in a bare `500`. The word `verifier_metadata`
+appears nowhere in it. The real `AttributeError` is in the *server* process — the other
+terminal. **When a Gym environment 500s, stop reading the client traceback and go look at
+the server one.** That single habit is worth the whole lab.
+
+`test_ground_truth_survives_parsing` is the regression test that turns this into a failure
+you cannot miss.
+
+**Step 8 — fix it** (~2 min)
+
+```bash
+cp /tmp/app.py.bak resources_servers/support_triage/app.py
+gym env test --resources-server support_triage 2>&1 | tail -3
+```
+
+Back to `8 passed`. **Restart the server in terminal 1** — it is holding the broken module.
 
 **Step 9 — a real reward** (~4 min)
 
@@ -433,13 +530,31 @@ silently. `test_ground_truth_survives_parsing` is the regression test for exactl
 gym env start --resources-server support_triage --model-type inference_provider  # terminal 1
 gym eval run --no-serve --agent support_triage_simple_agent \
     --input resources_servers/support_triage/data/example.jsonl \
-    --output results/support_triage_rollouts.jsonl                               # terminal 2
+    --output results/triage_rollouts.jsonl --num-repeats 1                       # terminal 2
 ```
 
-**Expect:** a `mean/reward` between 0 and 1 across five tickets.
+**Real output:**
+
+```
+Collecting rollouts: 100%|██████| 5/5 [00:00<00:00, 13.51it/s]
+Key metrics for support_triage_simple_agent:
+{
+    "mean/reward": 0.6,
+    "mean/input_tokens": 98.4,
+    "mean/output_tokens": 14.2,
+    "mean/total_tokens": 112.6
+}
+```
+
+**0.6 across five tickets, in under a second.** Thirty times faster than the mcqa rollouts in
+Lab 3 — the model is emitting 14 tokens of JSON instead of paragraphs of reasoning.
+
+**Point at the 0.6 and say why it is not a round number.** Partial credit — `hits / 2.0` —
+is doing real work here. Pass/fail would have collapsed "wrong team, right severity" into
+the same zero as "replied in prose", and a training loop would have had nothing to climb.
 
 **If you are behind at step 7,** skip the deliberate break and go straight to the working
-version. It is the best teaching moment in the deck and the only cuttable part of Lab 5.
+version. It is the best teaching moment in the lab and the only cuttable part.
 
 ---
 
@@ -486,7 +601,12 @@ Do not debug live.
 | `gym: command not found` | wrong venv | `source venv-gym/bin/activate` |
 | Gym install fails on Python version | 0.5.0 needs ≥3.13.14; the docs page says 3.12 and is stale | install 3.13 and rebuild the venv |
 | Lab 5 `gym env start` takes minutes | per-server venvs building cold | re-run the cache warm-up in `setup.sh` |
-| Every reward is 0.0 | ground truth dropped — the silent-drop trap | declare `verifier_metadata` on the request subclass |
+| `gym eval run` dies with a bare `ClientResponseError: 500` | the real traceback is in the **server** terminal, not this one | read terminal 1; usually a field dropped from the request subclass |
+| `AttributeError` on a field you put in your JSONL | undeclared fields are dropped (`extra="ignore"`) | declare it on the request subclass — e.g. `verifier_metadata` |
+| Tests pass but rewards are all 0.0 | your passing tests only assert `reward == 0.0`, and `verify()` returns early before reading ground truth | add a test that reaches the comparison |
+| `gym env test` says "no tests ran" | the per-server venv has no pytest | append `pytest` and `pytest-asyncio` to that server's `requirements.txt` |
+| Test fixtures fail with `Input should be a ... NeMoGymResponse` | a `SimpleNamespace` or bare dict is not accepted | build a real `NeMoGymResponse`; eight fields are required |
+| `--resources-server <name>` cannot resolve | the config's top-level key differs from the server name | make them the same string |
 | `gym env init` exits immediately | the directory already exists | `rm -rf` it, but note that also removes its warm venv |
 | Relay registration raises `TypeError` | callback signatures moved between releases | check the middleware guide for the pinned version |
 | Lab 6 cannot find `megatron.bridge` | running outside the container | there is no pip install; use the NGC image |

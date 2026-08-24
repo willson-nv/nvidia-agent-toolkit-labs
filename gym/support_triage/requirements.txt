@@ -1,4 +1,9 @@
--e nemo-gym[dev] @ ../../
+# Use the scaffold's plain requirement, NOT the `-e nemo-gym[dev] @ ../../` form you
+# will see in shipped environments like mcqa. Those live inside site-packages, where
+# `../../` is the Gym source tree. For an environment in your own repo, `../../` is
+# your repo root and the editable install has nothing to point at.
+nemo-gym[dev]
+
 # Gym builds a venv per server and shells out to pytest. Without these, `gym env test`
 # prints "no tests ran" and step 6 of lab 5 quietly proves nothing.
 pytest
