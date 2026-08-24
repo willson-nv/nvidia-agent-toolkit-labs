@@ -1,0 +1,14 @@
+# Gym writes these; all regenerable, some large.
+results/
+checkpoints/
+env.yaml            # model endpoint credentials -- never commit this
+hf_exports/
+
+# Per-server virtualenvs Gym builds on demand
+.venv/
+venv/
+venv-*/
+
+__pycache__/
+*.pyc
+.DS_Store

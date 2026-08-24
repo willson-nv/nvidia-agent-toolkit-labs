@@ -1,0 +1,22 @@
+support_triage_resources_server:
+  resources_servers:
+    support_triage:
+      entrypoint: app.py
+      domain: agent
+      verified: false
+      description: Single-step support-ticket triage, scored on severity and team
+
+support_triage_simple_agent:
+  responses_api_agents:
+    simple_agent:
+      entrypoint: app.py
+      resources_server:
+        type: resources_servers
+        name: support_triage_resources_server
+      model_server:
+        type: responses_api_models
+        name: policy_model
+      datasets:
+      - name: example
+        type: example
+        jsonl_fpath: resources_servers/support_triage/data/example.jsonl
