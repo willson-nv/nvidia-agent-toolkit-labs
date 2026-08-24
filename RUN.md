@@ -4,14 +4,14 @@ Six labs on one **L40S** (see [BREV.md](BREV.md)). Only lab 6 uses the GPU — l
 need no GPU, no network and no credentials at all, and labs 3–5 send inference to your
 model endpoint.
 
-> **Verification status.**
-> **Labs 1-5 are verified** on the box — Relay 0.7.3 on Python 3.12.14, NeMo Gym 0.5.0 on
-> Python 3.13.15 — and every output below is real, copied from an actual run. **Lab 6 is
-> still written against the documented APIs** and marked **⚠ likely to drift** — run it
-> before the day, and verify the container tag, which is still a placeholder.
+> **Verification status: all six labs are verified on the box.** Relay 0.7.3 on Python
+> 3.12.14 · NeMo Gym 0.5.0 on Python 3.13.15 · Megatron Bridge 0.1.0rc4 in
+> `nvcr.io/nvidia/nemo:25.09` on an L40S, driver 565.57.01. **Every output below is real,
+> copied from an actual run.** Nothing here is written from documentation alone.
 >
-> All three libraries ship breaking changes on a scale of weeks. Pinned versions are in
-> `setup.sh`; keep them pinned.
+> All three libraries ship breaking changes on a scale of weeks, and the NeMo container lags
+> Megatron Bridge by five minor versions. Pinned versions are in `setup.sh`; keep them
+> pinned, and re-run this file before the day.
 
 ---
 
@@ -553,6 +553,45 @@ Lab 3 — the model is emitting 14 tokens of JSON instead of paragraphs of reaso
 is doing real work here. Pass/fail would have collapsed "wrong team, right severity" into
 the same zero as "replied in prose", and a training loop would have had nothing to climb.
 
+**Then open the rollouts and go through them one at a time.** This is the payoff:
+
+```bash
+python - <<'PY'
+import json
+for i, r in enumerate(map(json.loads, open("results/triage_rollouts.jsonl"))):
+    print(f"row {i}  reward={r.get('reward')}  parsed={r.get('parsed')}")
+PY
+```
+
+**Real result:**
+
+| ticket | ground truth | the model said | reward |
+|---|---|---|---|
+| Checkout returning 500s for every customer, 20 minutes | **P0** / infra | P1 / auth | **0.0** |
+| SSO login loops for the whole marketing team | P1 / **auth** | P1 / **marketing** | 0.5 |
+| Nightly batch job has not run for three days | **P1** / infra | P2 / infra | 0.5 |
+| Rotate the API key for the staging tenant | P2 / auth | P2 / auth | 1.0 |
+| March invoice shows the wrong VAT rate | P2 / billing | P2 / billing | 1.0 |
+
+**Two things to say, and they are the best forty seconds in Lab 5.**
+
+**The model invented a team.** It answered `"team": "marketing"` — not one of the three
+values in the enum. It lifted the word straight out of the ticket text, which says *"the
+whole marketing team"*. That is what a language model does when a field looks like a slot:
+it fills it from context. The `parsed.get("team") in TEAMS` guard in `verify()` is the only
+reason that scores as a miss rather than being quietly compared as a string. **Validate
+against your enum, not just against the ground truth.**
+
+**And look at which one it got completely wrong.** Four tickets scored something. The single
+0.0 is the live outage affecting every customer — the highest-stakes row in the set. The
+model is competent on invoices and API keys and worst on the one that pages someone at 3am.
+An aggregate of 0.6 hides that entirely. **Read the rows, not just the mean.**
+
+**Two mechanical notes for whoever repeats this.** `verifier_metadata` is *not* echoed into
+the rollouts file — ground truth comes from your input JSONL. And the output is re-sorted
+("Sorting results to ensure consistent ordering"), so **do not zip rollouts against inputs
+by index**; match on content or carry an id.
+
 **If you are behind at step 7,** skip the deliberate break and go straight to the working
 version. It is the best teaching moment in the lab and the only cuttable part.
 
@@ -560,36 +599,128 @@ version. It is the best teaching moment in the lab and the only cuttable part.
 
 ## Part 3 — Megatron Bridge
 
-### 3.1 Lab 6 — HF in, Megatron out, HF back
+### 3.1 Lab 6 — HF in, Megatron out, HF back ✅
 
 ```bash
 docker run --rm -it --gpus all -v $(pwd):/workdir -w /workdir \
-    --entrypoint bash nvcr.io/nvidia/nemo:<TAG>
+    --entrypoint bash nvcr.io/nvidia/nemo:25.09
 ```
 
-**Smoke test first** — if this fails, the round trip was never going to work:
+**Check the bridge version first.** This is the headline of Part 3, not a preliminary:
+
+```bash
+pip show megatron-bridge | head -3
+```
+
+**Real output:** `Version: 0.1.0rc4`.
+
+**The container ships a release candidate.** Megatron Bridge is at 0.6.0 on PyPI; the
+supported install path is a container, and that container lags the library by five minor
+versions. Say it plainly — of the three tools in this workshop, this is the least settled.
+**Anyone building on it today should pin the image, not the package.**
+
+The API happened to survive the gap: `from_hf_pretrained`, `to_megatron_provider`,
+`provide_distributed_model` and `save_hf_pretrained` all exist in 0.1.0rc4. Do not assume
+that holds for the next image.
+
+**Ignore the noise.** Every invocation prints this, and it is the container's own version
+skew, not anything you did. Warn the room before it appears on the projector:
+
+```
+Skipping import of cpp extensions due to incompatible torch version
+2.8.0a0+...nv25.06 for torchao version 0.14.1
+```
+
+**Smoke test next** — if this fails, the round trip was never going to work:
 
 ```bash
 python megatron_bridge/list_architectures.py
 ```
 
-**Expect:** a list of convertible architectures. No torchrun, no download, no distributed
-init.
+**Real output:**
+
+```
+Megatron Bridge can convert 6 architectures:
+  DeepseekV2ForCausalLM
+  DeepseekV3ForCausalLM
+  LlamaForCausalLM
+  Qwen2ForCausalLM
+  Qwen3ForCausalLM
+  Qwen3MoeForCausalLM
+```
+
+**Six.** Worth pausing on — this is a bridge for specific model families, not a general
+converter, and that is the honest scope. No torchrun, no download, no distributed init.
 
 **Then the round trip:**
 
 ```bash
-python megatron_bridge/roundtrip.py --model meta-llama/Llama-3.2-1B
+python megatron_bridge/roundtrip.py --model Qwen/Qwen2.5-0.5B
 ```
 
-**Expect:** import, parallelism configured, model materialised, export written, then the
-summary banner.
+**The default is ungated on purpose.** `meta-llama/*` needs an accepted licence and an
+`HF_TOKEN` inside the container — a second credential and a second failure mode, for a lab
+that demonstrates nothing architecture-specific. `Qwen2ForCausalLM` is on the supported list
+above, and the weights are 988 MB.
 
-**Say:** train with Megatron's parallelism, serve with anyone's inference engine. The
-conversion is per-parameter and parallelism-aware, so it never needs both complete models
-in memory on one GPU.
+**Real output**, trimmed:
 
-**Highest-risk lab of the six.** If it stalls, talk over the code on the slide and move on.
+```
+=== importing Qwen/Qwen2.5-0.5B ===
+=== configuring parallelism before instantiation ===
+=== materialising the Megatron model (TP=1, PP=1) ===
+Model parallel not initialized, initializing...
+model.safetensors: 100%|████████| 988M/988M [00:01<00:00, 664MB/s]
+Loading from Qwen/Qwen2.5-0.5B ━━━━━ 100% (170/170) Qwen2Bridge
+ > number of parameters on (tensor, pipeline) model parallel rank (0, 0): 494032768
+=== exporting back to Hugging Face at ./hf_exports/roundtrip ===
+Converting to HuggingFace ━━━━━ 100% (170/170) Qwen2Bridge
+Success: All tensors from the original checkpoint were written.
+```
+
+**Three things to point at.**
+
+**`Model parallel not initialized, initializing...`** — the provider brings up its own
+process group. No `torchrun`, no launcher, no rank plumbing for the single-GPU case. That is
+why this lab fits in five minutes.
+
+**`(170/170)`, twice.** Import and export both walk the same 170 conversion tasks. The
+conversion is per-parameter and parallelism-aware, which is why it never needs both complete
+models in memory at once.
+
+**`Success: All tensors from the original checkpoint were written.`** That is the bridge's
+own check, not the script's. But do not stop there — see below.
+
+**Say:** train with Megatron's parallelism, serve with anyone's inference engine. The weights
+were never trapped in either format.
+
+#### Prove it rather than trusting the banner
+
+```bash
+python - <<'PY'
+import glob, torch
+from safetensors.torch import load_file
+from huggingface_hub import snapshot_download
+
+orig = snapshot_download("Qwen/Qwen2.5-0.5B", allow_patterns=["*.safetensors"])
+a = load_file(glob.glob(orig + "/*.safetensors")[0])
+b = load_file("hf_exports/roundtrip/model.safetensors")
+print(f"tensors: original={len(a)}  exported={len(b)}")
+worst, ident = 0.0, 0
+for k in a:
+    if k not in b: continue
+    if torch.equal(a[k], b[k]): ident += 1; continue
+    worst = max(worst, (a[k].float() - b[k].float()).abs().max().item())
+print(f"bit-identical: {ident}/{len(a)}   largest deviation: {worst:g}")
+PY
+```
+
+A tool reporting its own success is not evidence. Diffing every tensor is. This is also the
+habit worth leaving the room with, and it is the same one as Lab 5: **check the rows, not
+the summary.**
+
+**Still the highest-risk lab of the six** — it is the only one needing a GPU, a 37 GB image
+and NGC credentials. If it stalls on the day, talk over the code on the slide and move on.
 Do not debug live.
 
 ---

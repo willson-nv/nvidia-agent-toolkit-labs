@@ -136,11 +136,11 @@ a clean relaunch — `setup.sh` rebuilds in under half an hour.
 
 ```bash
 docker login nvcr.io
-docker pull nvcr.io/nvidia/nemo:<TAG>
+docker pull nvcr.io/nvidia/nemo:25.09
 ```
 
-**Verify the tag before the workshop.** `setup.sh` carries a placeholder that I could not
-confirm exists. This is the single most likely thing to fail on the day, and it fails slowly.
+**Tag confirmed:** `nvcr.io/nvidia/nemo:25.09`, **37.2 GB**, pulled and present on the box.
+Budget disk accordingly — that one image is a third of a 124 GB root volume.
 
 ---
 
@@ -178,7 +178,7 @@ brev shell agent-labs
 nvidia-smi                                          # before you talk to anyone
 source /home/ubuntu/workspace/venv-relay/bin/activate
 python relay/lab1_quickstart.py                     # 5-second smoke test
-docker image inspect nvcr.io/nvidia/nemo:<TAG> >/dev/null && echo "lab 6 ready"
+docker image inspect nvcr.io/nvidia/nemo:25.09 >/dev/null && echo "lab 6 ready"
 ```
 
 Start it **before the room fills**. If L40S capacity vanished overnight you want to know

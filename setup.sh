@@ -25,7 +25,7 @@ GYM_VENV="$WORK/venv-gym"
 
 RELAY_VER="0.7.3"      # 14 Aug 2026
 GYM_VER="0.5.0"        # 7 Aug 2026 -- requires Python >= 3.13.14
-NEMO_IMAGE="${NEMO_IMAGE:-nvcr.io/nvidia/nemo:25.09}"   # verify the tag before the workshop
+NEMO_IMAGE="${NEMO_IMAGE:-nvcr.io/nvidia/nemo:25.09}"   # confirmed to exist; 37.2 GB pulled
 
 say()  { printf '\n\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\n\033[1;33m!!\033[0m %s\n' "$*"; }

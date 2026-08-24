@@ -6,15 +6,20 @@ for Megatron Bridge; the container is the supported path.
 
     docker run --rm -it --gpus all -v $(pwd):/workdir -w /workdir \
         --entrypoint bash nvcr.io/nvidia/nemo:<TAG>
-    python roundtrip.py --model meta-llama/Llama-3.2-1B
+    python roundtrip.py
+
+The default is deliberately an UNGATED checkpoint. meta-llama/* repos require an
+accepted licence and an HF_TOKEN inside the container -- a second credential and
+a second thing to fail in front of a room, in exchange for nothing: the round
+trip demonstrates nothing architecture-specific.
 """
 import argparse
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="meta-llama/Llama-3.2-1B",
-                    help="any supported HF causal-LM checkpoint; keep it small for a demo")
+    ap.add_argument("--model", default="Qwen/Qwen2.5-0.5B",
+                    help="any supported HF causal-LM checkpoint; keep it small and ungated")
     ap.add_argument("--out", default="./hf_exports/roundtrip")
     ap.add_argument("--tp", type=int, default=1, help="tensor model parallel size")
     ap.add_argument("--pp", type=int, default=1, help="pipeline model parallel size")
