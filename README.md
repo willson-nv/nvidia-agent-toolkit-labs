@@ -14,6 +14,14 @@ The spine is *instrument it → score it → train on the answer*.
 | 5 | **Build your own environment** | `gym/support_triage/` | a model endpoint |
 | 6 | HF ↔ Megatron round trip | `megatron_bridge/` | GPU + NGC credentials |
 
+## Where it runs
+
+One **L40S on Brev** — see **[BREV.md](BREV.md)** for launch and setup.
+
+Only Lab 6 uses the GPU. Labs 1 and 2 need no GPU, no network and no credentials at all;
+labs 3-5 send inference to a model endpoint. Disk matters more than VRAM here, because of
+the NeMo container.
+
 ## Quick start
 
 ```bash
