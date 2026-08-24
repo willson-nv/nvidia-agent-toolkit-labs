@@ -100,16 +100,46 @@ python -c "import nemo_relay; print('  nemo-relay', getattr(nemo_relay,'__versio
 deactivate
 
 # -------------------------------------------------------------- 4. gym (3-5)
+# NeMo Gym 0.5.0 requires Python >= 3.13.14. Its own installation page still says
+# 3.12 and is stale. Stock Brev images ship 3.10 and 3.12, so on most boxes there
+# is no usable interpreter and we have to fetch one. uv installs a standalone
+# CPython without touching the system, which is also what Gym's own docs use.
 say "Gym environment  (labs 3, 4 and 5)"
+
+ensure_uv() {
+  command -v uv >/dev/null 2>&1 && return 0
+  say "Installing uv (to fetch a standalone Python 3.13)"
+  curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || return 1
+  export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+  command -v uv >/dev/null 2>&1
+}
+
 GYM_PY="$(command -v python3.13 || true)"
-if [ -z "$GYM_PY" ]; then
-  warn "python3.13 not found. NeMo Gym ${GYM_VER} requires >= 3.13.14."
-  warn "Its installation page still says 3.12 -- that page is stale. Install 3.13 and re-run."
-  skip "labs 3-5"
+if [ -n "$GYM_PY" ]; then
+  echo "  found system interpreter: $GYM_PY ($("$GYM_PY" -V 2>&1))"
 else
-  echo "  interpreter: $GYM_PY ($("$GYM_PY" -V 2>&1))"
-  make_venv "$GYM_VENV" "$GYM_PY"
+  warn "no python3.13 on this box (NeMo Gym ${GYM_VER} needs >= 3.13.14)"
+fi
+
+GYM_OK=0
+if ensure_uv; then
+  uv python install 3.13 >/dev/null 2>&1 || warn "uv could not fetch Python 3.13"
+  rm -rf "$GYM_VENV"
+  # --seed so the venv gets pip; Gym's per-server setup shells out to pip later
+  if uv venv --seed --python 3.13 "$GYM_VENV" >/dev/null 2>&1; then
+    GYM_OK=1
+  else
+    warn "uv venv --python 3.13 failed"
+  fi
+elif [ -n "$GYM_PY" ]; then
+  make_venv "$GYM_VENV" "$GYM_PY"; GYM_OK=1
+fi
+
+if [ "$GYM_OK" = 0 ]; then
+  skip "labs 3-5 -- no Python 3.13 available and uv could not provide one"
+else
   set +u; source "$GYM_VENV/bin/activate"; set -u
+  echo "  interpreter: $(python -V 2>&1)"
   python -m pip install -q --upgrade pip
   pip install -q "nemo-gym==${GYM_VER}"
   gym --version || true
