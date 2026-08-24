@@ -1,8 +1,25 @@
-# RUN.md — every command, and what to expect
+# RUN.md — every command, what to expect, and what to say
 
 Six labs on one **L40S** (see [BREV.md](BREV.md)). Only lab 6 uses the GPU — labs 1 and 2
 need no GPU, no network and no credentials at all, and labs 3–5 send inference to your
 model endpoint.
+
+## How to read the talk track
+
+> **🎤 SAY BEFORE** — read this out, then run the command.
+>
+> **🎤 SAY WHILE IT RUNS** — only on steps slow enough to need it.
+>
+> **🎤 SAY AFTER** — read this with the output on screen, pointing at the thing it names.
+>
+> **❓ IF THEY ASK** — the questions each line tends to invite, answered where you will need
+> them rather than in an appendix at the back.
+
+**These are a safety net, not a cage.** Read them aloud once while rehearsing and you will
+find your own words on the day. They exist so that if you lose your thread mid-lab, there is
+a sentence on the page you can simply read.
+
+**Steps marked 🔇 NO AUDIENCE** run before anyone is in the room.
 
 > **Verification status: all six labs are verified on the box.** Relay 0.7.3 on Python
 > 3.12.14 · NeMo Gym 0.5.0 on Python 3.13.15 · Megatron Bridge 0.1.0rc4 in
@@ -15,7 +32,9 @@ model endpoint.
 
 ---
 
-## Part 0 — Setup
+## Part 0 — Setup  🔇 NO AUDIENCE
+
+Days before, on your own. Nothing here is scripted because nobody is watching.
 
 ```bash
 bash setup.sh
@@ -45,9 +64,26 @@ of 1.0, which is what makes Lab 4 possible. See 2.1.
 
 ---
 
-## Part 1 — NeMo Relay
+## Part 1 — NeMo Relay  🎤 LIVE
+
+**Labs 1 and 2 need no API key, no network and no GPU.** Say that out loud — it is the
+lowest-friction thing in the whole session and it means everyone in the room can run it
+tonight.
+
+---
 
 ### 1.1 Lab 1 — one scope, one tool call, one model call ✅
+
+> **🎤 SAY BEFORE**
+>
+> "Let us start with the first of those three questions — *what did my agent actually do?*
+>
+> I have a tiny agent here. It calls one tool, it calls one model, and that is it. What I want
+> you to watch is not what it returns — it is what gets **recorded** while it happens.
+>
+> And I want to flag one thing before I press return: **this needs no API key, no network
+> connection, and no GPU.** There is no observability backend running. Nothing is being
+> shipped anywhere."
 
 ```bash
 source ~/venv-relay/bin/activate
@@ -68,12 +104,44 @@ python relay/lab1_quickstart.py
   event=scope  name=demo-agent
 ```
 
-**Each scope emits twice** — once on entry, once on exit. That is why `search` and
-`demo-provider` each appear on two lines, and why the agent scope closes last, after
-everything nested inside it has finished. Worth pointing at on screen.
+> **🎤 SAY AFTER** *(pair the lines up with your finger as you talk)*
+>
+> "At first glance that looks repetitive. It is not — **every scope emits twice.** Once on the
+> way in, once on the way out.
+>
+> So read it in pairs. `search` opens and closes. `demo-provider` opens and closes. And
+> `demo-agent` — look where it is — opens on the very first line and closes on the very last,
+> **after everything nested inside it has finished.**
+>
+> Those pairs are a tree. That is the whole point. A log file gives you a flat list of things
+> that happened and leaves you to work out which model call caused which tool call. This
+> gives you the structure directly, because the structure is what actually happened.
+>
+> And I said it before I ran it, so let me say it again now you have seen the output: **no API
+> key, no network, no backend.** That is a complete structured trace of every boundary this
+> agent crossed, and it cost nothing to get."
 
-**No API key, no network, no observability backend** — and there is still a structured
-trace of every boundary the agent crossed.
+> **❓ IF THEY ASK**
+>
+> **"Isn't this just OpenTelemetry?"**
+> "For the observation half — honestly, yes, the ideas overlap heavily, and if all you need is
+> to see what happened then your existing tracing is probably fine. I would not sell you
+> something you already have. The difference shows up in the next lab, which is that this can
+> also **refuse**. OTel watches. This can intervene, and the intervention lands in the same
+> trace."
+>
+> **"What is a `mark` versus a `scope`?"**
+> "A scope has a start and an end and can contain other things. A mark is a single point in
+> time — something happened, no duration. You will see marks matter in the next lab."
+>
+> **"Does this slow the agent down?"**
+> "You are looking at microseconds against tool calls and model calls that take hundreds of
+> milliseconds. It is not where your latency is."
+>
+> **"Where does this go in production?"**
+> "Wherever you point it. There is a subscriber interface — here it is printing to stdout
+> because that is the clearest thing to show you. In production it goes to whatever you
+> already use."
 
 **Flush is `await flush_async()`, not `flush()`.** Relay 0.7.3 refuses to block a running
 event loop and raises a `RuntimeError` telling you so. Without the flush the process can
@@ -82,6 +150,19 @@ exit before the subscriber has printed.
 ---
 
 ### 1.2 Lab 2 — three middlewares: redact, reject, measure ✅
+
+> **🎤 SAY BEFORE**
+>
+> "Seeing what happened is useful. But most of you do not have a visibility problem you can
+> solve with a dashboard — you have a *control* problem. Somebody wants to know what stops the
+> agent doing something it should not.
+>
+> So I have registered three pieces of middleware on that tool. One **redacts** an API key out
+> of what gets recorded. One is a **guardrail** that rejects a call with an empty query. One
+> just **measures** how long the call took.
+>
+> I am going to make two calls. A good one, and a bad one. **And I want you to count
+> something for me: count how many times the word `search` appears as a scope.**"
 
 ```bash
 python relay/lab2_middleware.py
@@ -107,19 +188,62 @@ python relay/lab2_middleware.py
   event=scope  name=demo-agent data=None
 ```
 
-**The single best thing on screen: count the `search` scopes.** The good call has two —
-start carrying the redacted args, end carrying the result. The blocked call has **none**,
-only a `mark`. That is visual proof the tool function was never entered, rather than being
-logged and allowed anyway.
+> **🎤 SAY AFTER** *(this is the strongest thirty seconds in Part 1 — do not rush it)*
+>
+> "So — how many `search` scopes in the good call? **Two.** One opening, carrying the
+> arguments. One closing, carrying the result.
+>
+> And in the blocked call? **None.** Zero. There is a `mark` saying it was rejected, and then
+> nothing.
+>
+> That absence is the whole demo. **The tool function was never entered.** Not called and
+> ignored. Not called and the result thrown away. Never entered. And you are not taking my
+> word for that — you are reading it off the trace, because a scope that never opened cannot
+> appear.
+>
+> That is the difference between a guardrail and a warning label."
+>
+> *(then, pointing at `search.require_query`)*
+>
+> "Second thing. **The guardrail itself is in the trace.** It gets its own scope, and its
+> closing event carries the verdict — allowed, rejected, and the reason why. And that reason
+> travels all the way back out to the caller as an exception. Nothing is hidden and nothing is
+> silently swallowed.
+>
+> Third, and this one matters for anyone with a compliance function. Look at the arguments on
+> the recorded event: **`api_key: '***redacted***'`.** Now — the tool itself received the real
+> key. It had to; it needed it to work. **Both of those are true at once.** The redaction is
+> about what gets *observed*, not about what the tool receives. That distinction is usually
+> the difference between being allowed to turn tracing on and not."
 
-**Every middleware is visible in the trace.** The guardrail gets its own scope
-(`search.require_query`) whose end event carries the verdict — `allowed`, `rejected`, and
-the `rejection_reason` — and that reason propagates all the way out to the caller as a
-`RuntimeError`. Nothing is hidden.
+> **❓ IF THEY ASK**
+>
+> **"Could a developer just not register the guardrail?"**
+> "Yes — this is a library, not a sandbox. It gives you a place to put the control and makes
+> the control auditable. It does not stop someone with commit access from removing it. That is
+> a code-review problem, and I would rather say so than oversell it."
+>
+> **"What is the ordering? Can a guardrail run after the call?"**
+> "No, and that is deliberate. The pipeline order is fixed: guardrails, then intercepts, then
+> the recorded start, then the real call, then the recorded end. You cannot accidentally
+> register a guardrail after the thing it is supposed to guard."
+>
+> **"What happens if my guardrail itself throws?"**
+> "It fails closed — the call does not happen. That is the right default for something whose
+> job is refusing."
+>
+> **"Can we use this with an agent framework we already have?"**
+> "It is a Python library that wraps your tool functions, so mostly yes. The integration
+> question is where your tool calls actually get dispatched."
 
-**Redaction is observability-only.** The emitted event shows
-`api_key: '***redacted***'`, while the tool body asserts it received
-`sk-fake-not-a-real-key`. Both are true at once, and that is the point.
+> **⚠️ WORTH SAYING IF THE ROOM IS TECHNICAL.** The guardrail expects **`None` to allow** and a
+> message to block. It is not a boolean — `return False` **allows** every call, because
+> `False is not None`. No error, no warning. This is one of only two genuinely silent failures
+> in these six labs, and volunteering it costs you nothing:
+>
+> "One trap, since you will hit it. This returns `None` to allow. If you return `False`
+> thinking that means block — it allows. Silently. **Test your guardrail's failure path, not
+> just its happy path.**"
 
 ---
 
@@ -133,18 +257,32 @@ the `rejection_reason` — and that reason propagates all the way out to the cal
 | Outcome import | `ImportError` from `nemo_relay.intercepts` | `from nemo_relay import ToolExecutionInterceptOutcome` |
 
 **The third one is the dangerous one** and worth saying out loud: returning a boolean does
-not error. The guardrail registers, runs, and permits everything. Of every failure in these
-six labs this is the only one that is truly silent — Lab 5's dropped-ground-truth trap by
-contrast raises loudly, just in a terminal you are not looking at. **Test the failure path,
-not just the happy path.**
+not error. The guardrail registers, runs, and permits everything. This is one of only two
+genuinely silent failures in these six labs — the other is a sloppy custom regex in Lab 4.
+Lab 5's dropped-ground-truth trap, by contrast, raises loudly, just in a terminal you are not
+looking at. **Test the failure path, not just the happy path.**
 
 ---
 
-## Part 2 — NeMo Gym
+## Part 2 — NeMo Gym  🎤 LIVE
+
+**Forty-eight of the hundred and twenty minutes are here, and twenty-five of those are
+Lab 5.** That is deliberate — this is the part that changes what people do on Monday.
+
+---
 
 ### 2.1 Lab 3 — a rollout and a reward ✅
 
-**The endpoint.** `env.yaml` at the repo root:
+> **🎤 SAY BEFORE**
+>
+> "Second question. *Is my agent getting better or worse than it was last week?*
+>
+> To answer that you need a number, and you do not have one. So let us make one.
+>
+> I have an environment here — five multiple-choice questions with known answers, and a
+> grader. I am going to have a model attempt all five and score itself.
+>
+> Two terminals, because the environment runs as servers and the evaluation runs beside it."
 
 ```yaml
 policy_base_url: https://integrate.api.nvidia.com/v1
@@ -196,13 +334,50 @@ Rollouts: results/mcqa_rollouts.jsonl
 Aggregate metrics: results/mcqa_rollouts_aggregate_metrics.json
 ```
 
-**Do not move on yet — read the second metric.** `accuracy 20`, `no_answer 80`. Not a single
-wrong-but-parseable answer. Four of five produced nothing the grader could read at all.
+> **🎤 SAY AFTER** *(do not rush to the next lab — this is the setup for everything)*
+>
+> "There it is. **Zero point two.** Six seconds, five tasks, and now we have a number.
+>
+> That is already worth something — it is reproducible, I can run it again next week, and I
+> can watch it move.
+>
+> But do not stop at the headline. **Look at the second metric.** Accuracy twenty per cent.
+> `no_answer` — **eighty per cent.**
+>
+> Read what that actually says. Four of the five did not produce a wrong answer. They produced
+> **nothing the grader could read at all.** There is not a single wrong-but-parseable answer
+> in the set.
+>
+> So — the model scored 0.2. What would you do next?"
+>
+> *(let them answer — someone will say train it, or use a bigger model)*
+>
+> "That is the instinct, and it is what almost everyone says. Hold that thought. **A low score
+> has at least two completely different causes and this number cannot tell you which one you
+> have.** The next lab takes about a minute and it answers that question."
 
-That distinction is the setup for Lab 4, so plant it here: **a low score has at least two
-completely different causes**, and one number cannot tell you which. Ask the room what they
-would do next. The instinct is always "train the model." It is the wrong instinct, and Lab 4
-shows why in one command.
+> **❓ IF THEY ASK**
+>
+> **"Why such a small model?"**
+> "Deliberately. The nine-billion model scores a perfect 1.0 on this in sixty-eight seconds.
+> This one scores 0.2 in six. It is eleven times faster **and** it leaves the next lab
+> somewhere to go — you cannot demonstrate anything from a ceiling."
+>
+> **"Is this running on your GPU?"**
+> "No — and this is worth knowing. Labs three through five send inference to a hosted
+> endpoint. **You can build and validate an entire evaluation environment without owning a
+> GPU.** The GPU only becomes necessary when you start training, and I will show you exactly
+> where that line is."
+>
+> **"What is `inference_provider`?"**
+> "Gym ships one server for OpenAI proper and a generic one for anything OpenAI-*compatible*.
+> This endpoint is compatible, not OpenAI. It is a small thing that will cost you twenty
+> minutes the first time you point this at a customer's self-hosted model."
+>
+> **"Why three servers for five questions?"**
+> "Because they change at different rates and different people own them. The environment is
+> yours. The agent loop and the model are swappable. Swapping the model must not mean
+> rewriting your grader."
 
 **Three files land in `results/`.** The rollouts file is the one that matters — Lab 4
 re-reads it, and training consumes it.
@@ -216,6 +391,18 @@ with a bare `FileNotFoundError` on the materialized-inputs path, which names not
 
 Lab 3 ended at **0.2**, with 80% of rows scored `no_answer`. Nothing here calls a model
 again. Every number below comes from the five rollouts already on disk.
+
+> **🎤 SAY BEFORE**
+>
+> "So. The score was 0.2 and the instinct in the room was to train the model.
+>
+> Before we spend a single GPU-hour on that, let us check something. **I am not going to call
+> the model again.** Not once. Everything from here uses the five attempts already sitting on
+> disk from the last lab.
+>
+> The environment I am using ships four different grading modes. Four opinions, from the
+> people who wrote it, about how to read an answer out of a model's response. Let us just try
+> all of them."
 
 **Pass the selectors again.** Reverify is not a continuation of the run — it is a fresh
 invocation that happens to read the run's output, and it re-resolves the servers by name:
@@ -242,34 +429,74 @@ nothing to run` — which never hints that re-passing the selector is the fix.
 | `lenient_answer_colon` | **0.0** | 100% |
 | `lenient_answer_colon_md` | 0.2 | 80% |
 
-**Two things to say, and the second is the important one.**
+> **🎤 SAY AFTER THE SWEEP** *(walk down the four numbers)*
+>
+> "Four grading modes. Strict — 0.2. Lenient boxed — 0.2. Lenient answer-colon — **zero.**
+> Lenient answer-colon-markdown — 0.2.
+>
+> Not one of them beat the baseline. **And one of them made it worse.**
+>
+> Sit with that for a second, because the name is doing something misleading. These are not
+> four levels of tolerance where each one is a bit more forgiving than the last. **They are
+> four different extractors, and picking one replaces the previous one.** The mode called
+> *lenient* threw away the only point we had, because the one row that was working answered
+> `Answer: \boxed{C}` — and that mode reads the text after `Answer:` instead of opening the
+> box.
+>
+> So: the knob shipped, I turned it through every setting the vendor gave me, and the number
+> never moved up. That is usually the moment you go and ask for a bigger model.
+>
+> **Let us look at what the model actually said instead.**"
 
-**"Lenient" is a misnomer.** These are not graduated levels of tolerance — they are four
-*different extractors*, and selecting one replaces the previous rather than relaxing it.
-`lenient_answer_colon` made the score strictly **worse**, because the one row that was
-working answered `Answer: \boxed{C}` and that mode reads the text after `Answer:` instead of
-opening the box. A mode called lenient lost the only point on the board.
-
-**`lenient_boxed` cannot help here at all,** and it is worth showing why rather than
-asserting it: it still requires a `\boxed{}` to exist and only loosens what is *inside* it.
-Four of our five rows have no box anywhere, so `_extract_boxed_inner` returns `None` before
-any leniency is reached.
-
-So: the knob shipped, you turned it through all four settings, and the score never improved.
-Now what?
+> **❓ IF THEY ASK**
+>
+> **"Why did lenient_boxed not help?"**
+> "Because it still requires a `\boxed{}` to exist — it only loosens what is allowed *inside*
+> the box. Four of our five rows have no box anywhere, so it bails out before any leniency is
+> reached. Worth knowing rather than guessing: the leniency is about the contents, not about
+> whether the wrapper is there."
 
 #### Step 2 — write your own extractor
 
-Read one failing row aloud first. Show the prompt:
+Read one failing row aloud. Show the prompt:
 
 > *"The last line of your response should be in the following format: 'Answer: \boxed{...}'"*
 
 Then show what the model actually said: *"In summary, the correct answer is E"*. Expected
 answer: **E**. Scored **0.0**.
 
+> **🎤 SAY** *(point at the prompt, then at the response, then at the zero)*
+>
+> "The prompt told it, explicitly, to answer in the format `Answer: backslash-boxed-E`.
+>
+> The model said **'In summary, the correct answer is E.'**
+>
+> The expected answer was **E**.
+>
+> It scored **zero**.
+>
+> Now — is that model wrong? It is not wrong. It got the question right. It just did not
+> format the answer the way the grader wanted it.
+>
+> So what was that grader actually measuring? **It was measuring instruction-following, not
+> knowledge.** And it was scoring a correct-but-unformatted answer exactly the same as a wrong
+> one.
+>
+> Nobody sat down and decided that. It fell out of a regular expression."
+
 **The grader was not measuring knowledge. It was measuring instruction-following** — and
 scoring a correct-but-unformatted answer identically to a wrong one. Nobody chose that. It
 fell out of a regex.
+
+> **🎤 SAY BEFORE THE PATCH**
+>
+> "So let us write our own. **Not fork the library, not patch anything** — the environment
+> ships an extension point for exactly this, and it is checked *before* the built-in modes.
+>
+> Five patterns. Tried in order. Taking the **rightmost** match, because these models reason
+> first and commit to an answer last.
+>
+> Same five rollouts. Still no model calls."
 
 `verify()` checks `template_metadata["output_regex"]` **before** `grading_mode` — a shipped,
 per-row extension point that takes a string or a list of patterns, tried in order, rightmost
@@ -325,6 +552,22 @@ Key metrics for mcqa_simple_agent:
 
 **0.2 → 0.8. Zero model calls. `no_answer` 80% → 0%.**
 
+> **🎤 SAY AFTER**
+>
+> "**Zero point two, to zero point eight.** And I want to be precise about what just happened,
+> because it is easy to miss.
+>
+> **I did not call the model.** Not once. Those are the identical five attempts, on disk,
+> unchanged, from six minutes ago. The only thing that changed is five lines of regular
+> expression describing how to read an answer.
+>
+> And look at the second metric again — `no_answer` went from eighty per cent to **zero**.
+> Every single response now produces something the grader can read.
+>
+> **Rollouts are expensive. Grading them is free.** You collect once, and then you can argue
+> about what 'correct' means as many times as the argument needs — with a customer, using
+> their own data, in seconds rather than in another eval run."
+
 #### Step 3 — the row that stayed wrong
 
 Do not skip this. Per-row, the recovery looks like:
@@ -337,23 +580,62 @@ Do not skip this. Per-row, the recovery looks like:
 | 3 | E | E | hit |
 | 4 | I | **C** | miss — confidently wrong |
 
-Row 4 was never a hard question the model failed. It answered C, it was wrong, and the
-strict grader scored that **identically to the four rows that were right**. Four of the five
-zeros belonged to the grader; exactly one belonged to the model. One number could not tell
-you which, and the fix for each is completely different — you cannot train your way out of a
-bad regex.
+> **🎤 SAY — THE CLOSE** *(this is the payoff of the entire Gym section; slow down)*
+>
+> "Four rows recovered. One did not. Look at row four.
+>
+> Expected answer: **I**. The model said **C**. So it stays at zero — and it should.
+>
+> But notice what that means. **Row four was never a hard question the model failed.** It
+> answered confidently, and it was wrong. And the strict grader we started with scored that
+> **exactly the same as the four rows that were right.**
+>
+> So let me put the whole lab in one sentence. **Four of those five zeros belonged to the
+> grader. Exactly one belonged to the model.** One number could not tell you which was which —
+> and the fix for each is completely different.
+>
+> If you had trained on this, you would have spent a week and a GPU budget teaching a model
+> that already knew the answers to format them differently. **You cannot train your way out of
+> a bad regex.**
+>
+> And the flip side, which is the thing I would actually like you to take away: **the reward
+> function is code you own.** It is not a property of the model, it is not handed down by the
+> benchmark. You can fix it for free. And — as the mode called *lenient* showed us — you can
+> break it just as easily."
 
-**The close:** rollouts are expensive, grading them is not. The reward function is code you
-own, which means you can fix it for free, and it also means you can break it — as
-`lenient_answer_colon` did in step 1.
+> **❓ IF THEY ASK**
+>
+> **"Isn't writing your own grader just moving the goalposts?"**
+> "It absolutely can be, and that is a fair challenge. The discipline is to write the grader
+> **before** you look at the scores, and to version it like any other code so the change is
+> visible in review. What you saw me do — look at failures, then loosen the grader — is
+> exactly the thing to be careful about. I did it on stage because the failure mode was
+> obviously formatting, not correctness. If I could not tell those apart, I should not have
+> touched it."
+>
+> **"How would we catch this in our own evals?"**
+> "Read the rows, not the mean. Every time. The aggregate told me 0.2 and told me nothing
+> useful. Five minutes reading five actual responses told me everything."
+>
+> **"Does this mean benchmark scores are unreliable?"**
+> "It means a benchmark score is a statement about a model **and** a grader, and people quote
+> it as though it is only about the model. That is worth remembering next time someone shows
+> you a leaderboard."
+>
+> **"Could a sloppy regex make the score look better than it is?"**
+> "Yes — and that is the genuine hazard here. The custom-regex path trusts your pattern over
+> the list of valid options, so a careless pattern can manufacture answers out of prose and
+> report a healthy-looking number. That one *is* silent. Review your grader like you review
+> production code."
 
 #### Two traps in this lab
 
 **`_parse_answer_with_custom_regex` trusts your regex over `allowed_letters`** and will
 return a captured letter even when it is not a valid option for that question. A sloppy
-pattern manufactures answers out of prose and reports a healthy-looking score. Same quiet
-failure family as the Relay boolean guardrail and the Gym field drop: the API looks
-satisfied, the behaviour is wrong, nothing warns you.
+pattern manufactures answers out of prose and reports a healthy-looking score — and unlike
+Lab 5's dropped field, **this one really does stay quiet**: no error, no warning, just a
+number that looks better than it is. Alongside the Relay boolean guardrail, it is one of only
+two genuinely silent failures in these six labs.
 
 **Reverify spins up the full three-server Ray cluster** — roughly 20 seconds of startup for
 under a second of grading, then a spray of `Failed to connect to GCS ... TimedOut` warnings
@@ -377,6 +659,20 @@ The centrepiece. Twenty-five minutes, nine steps. A finished copy lives in
 `gym/support_triage/` — copy it in if anything stalls. **Every step below was run on the
 box; the outputs are real.**
 
+> **🎤 SAY BEFORE THE WHOLE LAB**
+>
+> "Everything so far has been someone else's task. Multiple-choice questions with known
+> answers — useful for showing you the machinery, useless for your actual job.
+>
+> So for the next twenty-five minutes we are going to build one from scratch, for a task that
+> looks like something you might genuinely have. **A support ticket arrives as free text. The
+> model has to return a severity and a team, as JSON.**
+>
+> I want you to watch how much of this is code I write versus code that is handed to me,
+> because that ratio is the thing worth taking away."
+
+---
+
 **Step 1 — scaffold** (~2 min)
 
 ```bash
@@ -395,9 +691,17 @@ resources_servers/support_triage/requirements.txt
 resources_servers/support_triage/tests/test_app.py
 ```
 
-The scaffold's `verify()` already returns `reward=1.0` — the environment works before you
-write anything. **And note what is missing: `data/` contains only a `.gitignore`.** No
-example data. Remember that when `validate` passes in step 5.
+> **🎤 SAY AFTER**
+>
+> "**Six files.** That is an environment. Not a registry entry, not a plugin manifest, not a
+> packaging step — a directory that gets discovered because it is there.
+>
+> And here is the bit that surprises people: **it already works.** The generated `verify()`
+> returns a reward of 1.0 for everything. It is useless, but it is a functioning environment
+> before I have written a line.
+>
+> Notice what is *missing*, though. Look at `data/` — there is a `.gitignore` in there and
+> nothing else. **No example data.** Hold that thought for about four minutes; it matters."
 
 **⚠ Keep the scaffold's `requirements.txt`.** It generates `nemo-gym[dev]`. Shipped
 environments like `mcqa` instead carry `-e nemo-gym[dev] @ ../../`, and copying that is a
@@ -413,8 +717,45 @@ Without those two, `gym env test` prints "no tests ran" and step 6 quietly prove
 
 **Step 2 — the verifier** (~5 min)
 
-Paste `gym/support_triage/app.py`. Read `verify()` aloud: pull the assistant's text out,
-parse the JSON, compare two fields, return `hits / 2.0`.
+Paste `gym/support_triage/app.py`. Read `verify()` aloud.
+
+> **🎤 SAY WITH `verify()` ON SCREEN**
+>
+> "This is the only part I actually write. About forty lines, and the function that matters is
+> about fifteen.
+>
+> Read it with me. **Pull the assistant's text out. Parse it as JSON. Compare two fields
+> against the ground truth. Return a number.** That is an environment.
+>
+> One decision in there worth pausing on: `reward = hits / 2.0`. **Partial credit.** If it
+> gets the severity right and the team wrong, that scores a half, not a zero.
+>
+> That is one line of difference and it matters more than it looks. A pass-or-fail signal
+> gives a training loop almost nothing to climb — everything that is not perfect looks
+> identically bad. **'One of two fields right' is a gradient.** It is the difference between a
+> metric you report and a signal you can improve against.
+>
+> The other decision: I check that the team is one of my four legal values *before* I compare
+> it to the answer. That looks like belt-and-braces. It is not, and I will show you why in
+> about fifteen minutes."
+
+> **❓ IF THEY ASK**
+>
+> **"Is that really all of it?"**
+> "That is really all of it. There is boilerplate around it — the request and response models —
+> but the logic is what you can see. If you can describe what 'good' means for your task in
+> forty lines of Python, you can build one of these."
+>
+> **"What if scoring needs a database lookup, or an API call?"**
+> "Then do it — it is a normal Python function in a normal FastAPI server. People do call out
+> to sandboxes, test runners and real systems from here. Just be aware that if your verifier
+> has side effects, the replay feature you saw in Lab 4 no longer applies to you, and the
+> server has to declare that."
+>
+> **"Can the verifier use another model as a judge?"**
+> "Yes, and people do. It costs you money per evaluation and it introduces a second thing that
+> can be wrong. I would exhaust rules first — Lab 4 was a whole demonstration of how much
+> damage a bad grader does, and an LLM judge is a grader you can inspect much less easily."
 
 **Step 3 — the config** (~2 min)
 
@@ -430,15 +771,35 @@ against the top-level key. Naming them differently — `support_triage_resources
 
 Five rows, `responses_create_params` plus `verifier_metadata`. All synthetic.
 
+> **🎤 SAY WITH THE DATA ON SCREEN**
+>
+> "Five tickets. Each row is the prompt I send, and — riding alongside it — **the correct
+> answer**, which the model never sees. That is the whole shape of an evaluation dataset.
+>
+> And these are invented. Made-up tickets, made-up teams. **Do not build your first one of
+> these on real customer records**, including your own company's. You will want to paste
+> examples into a slide eventually, and the moment you do, synthetic is the difference between
+> a demo and an incident."
+
 **Step 5 — validate** (~1 min)
 
 ```bash
 gym env validate --config resources_servers/support_triage/configs/support_triage.yaml
 ```
 
-**Real output:** `✓ Config is valid.` — instant, with no server running. It does *not* check
-that your JSONL exists. The scaffold never created `data/example.jsonl` and validate passes
-anyway. **A green config check is not a working environment.**
+**Real output:** `✓ Config is valid.` — instant, with no server running.
+
+> **🎤 SAY AFTER**
+>
+> "Valid, instantly, with no model server running and nothing loaded. That is the inner loop —
+> you can iterate on an environment all day without spending a cent on inference.
+>
+> But **read what it actually checked.** It checked the config. It did **not** check that my
+> data file exists — and remember, four minutes ago we saw that the scaffold never created
+> one.
+>
+> So this is green, and my environment has no data in it. **A passing config check is not a
+> working environment.** Useful thing to know before you trust one in CI."
 
 **Step 6 — test** (~4 min)
 
@@ -472,7 +833,22 @@ response
 Copy the shape from a shipped environment's tests rather than reverse-engineering it:
 `site-packages/resources_servers/mcqa/tests/test_app.py`.
 
+> **🎤 SAY AFTER STEP 6**
+>
+> "Eight tests, one second, no model. **That is your inner loop** — you can develop a reward
+> function all day for free, and only pay when you actually collect rollouts.
+>
+> Which brings me to the most useful three minutes in this lab. I am going to break it on
+> purpose."
+
 **Step 7 — break it on purpose** (~3 min)
+
+> **🎤 SAY BEFORE**
+>
+> "There is exactly one line in my verifier that declares the ground truth field — the correct
+> answer that rides along with each ticket.
+>
+> I am going to delete it. Just that one line. **What do you expect to happen?**"
 
 Comment out the one declared field and re-run the tests:
 
@@ -498,19 +874,49 @@ does not fail silently.** Run it against a live eval and the run dies on row 0:
 aiohttp.client_exceptions.ClientResponseError: 500, Internal Server Error, url='.../run'
 ```
 
-**So what is the lesson? Two, and both are better than "it fails silently".**
+> **🎤 SAY AFTER** *(point at the pass/fail count first, then at the traceback)*
+>
+> "So — six failed. Which is what you would expect, and honestly it is a relief; it means this
+> does not fail silently, and I had assumed it would.
+>
+> **But look at the other number. Two passed.**
+>
+> Which two? The one where the model replies in prose, and the one where it returns nothing.
+> **The two tests that assert the reward should be zero.**
+>
+> And of course they pass — the verifier bails out early on unparseable output, before it ever
+> goes looking for ground truth. So that code path is completely destroyed, and those two
+> tests are perfectly happy.
+>
+> Think about what that means for a test suite you write in a hurry. **If your tests mostly
+> check that bad input scores badly — which is a very natural thing to write — you can ship an
+> environment whose entire ground-truth path is broken, and your suite goes green.**"
+>
+> *(now the traceback, if you ran the live eval version)*
+>
+> "And one more, which is the most practically useful thing in this lab. When this happens
+> against a real run, the error you see is a `500`. Nine frames of network library. **The
+> words `verifier_metadata` appear nowhere in it.**
+>
+> The actual error is in the *other terminal* — the server process. So: **when a Gym
+> environment returns a 500, stop reading the traceback in front of you and go and look at the
+> server's.** That habit alone will save you an afternoon."
 
-**Look at which tests still pass.** Six failed, **two passed** — the prose case and the
-empty-string case, the two that assert `reward == 0.0`. `verify()` returns early on
-unparseable output, before it ever touches ground truth. A verifier whose entire
-ground-truth path is destroyed **still passes every test that expects a zero.** Write only
-sad-path tests and this ships green.
-
-**And look at where the error is reported.** The traceback in the terminal you are watching
-is nine frames of aiohttp and asyncio ending in a bare `500`. The word `verifier_metadata`
-appears nowhere in it. The real `AttributeError` is in the *server* process — the other
-terminal. **When a Gym environment 500s, stop reading the client traceback and go look at
-the server one.** That single habit is worth the whole lab.
+> **❓ IF THEY ASK**
+>
+> **"Why does Pydantic drop the field instead of erroring?"**
+> "Default behaviour — extra fields on the incoming data that the model does not declare are
+> ignored rather than rejected. It is a reasonable default for an API boundary and a
+> dangerous one here, because your data quietly loses a field it was carrying."
+>
+> **"How would we catch this in CI?"**
+> "Exactly the test I have at the bottom of that file — one that reaches the comparison and
+> asserts a *non-zero* reward. If your suite has no test that can only pass when ground truth
+> arrives, you have no coverage of the thing that matters."
+>
+> **"Is this documented?"**
+> "It is warned about, and I still hit it. Which is roughly the point — a warning in a document
+> is not the same as a test in your repo."
 
 `test_ground_truth_survives_parsing` is the regression test that turns this into a failure
 you cannot miss.
@@ -525,6 +931,11 @@ gym env test --resources-server support_triage 2>&1 | tail -3
 Back to `8 passed`. **Restart the server in terminal 1** — it is holding the broken module.
 
 **Step 9 — a real reward** (~4 min)
+
+> **🎤 SAY BEFORE**
+>
+> "Right — it is fixed, the tests pass, and so far this environment has never seen a model.
+> Let us point a real one at it and get a number for five support tickets."
 
 ```bash
 gym env start --resources-server support_triage --model-type inference_provider  # terminal 1
@@ -549,9 +960,16 @@ Key metrics for support_triage_simple_agent:
 **0.6 across five tickets, in under a second.** Thirty times faster than the mcqa rollouts in
 Lab 3 — the model is emitting 14 tokens of JSON instead of paragraphs of reasoning.
 
-**Point at the 0.6 and say why it is not a round number.** Partial credit — `hits / 2.0` —
-is doing real work here. Pass/fail would have collapsed "wrong team, right severity" into
-the same zero as "replied in prose", and a training loop would have had nothing to climb.
+> **🎤 SAY AFTER**
+>
+> "**Zero point six**, across five tickets, in under a second. Twenty-five minutes ago this
+> environment did not exist.
+>
+> And notice it is not a round number — it is not three out of five. **That is the partial
+> credit doing its job.** Some of those tickets got one field right and one wrong, and the
+> environment says so instead of throwing them in with the total failures.
+>
+> But do not stop at 0.6. **Let us read the rows.**"
 
 **Then open the rollouts and go through them one at a time.** This is the payoff:
 
@@ -573,19 +991,55 @@ PY
 | Rotate the API key for the staging tenant | P2 / auth | P2 / auth | 1.0 |
 | March invoice shows the wrong VAT rate | P2 / billing | P2 / billing | 1.0 |
 
-**Two things to say, and they are the best forty seconds in Lab 5.**
+> **🎤 SAY — THE CLOSE OF LAB 5** *(the best forty seconds in the lab; take them)*
+>
+> "Two things in this table, and both are better than the number above it.
+>
+> **First — look at row two. It invented a team.**
+>
+> It answered `team: marketing`. Marketing is not one of my four values. It is not an option
+> I offered. And where did it get it? Read the ticket: *'SSO login loops for the whole
+> **marketing** team.'* It lifted the word straight out of the input.
+>
+> That is what a language model does when a field looks like a slot — **it fills it from
+> context.** Not maliciously, not randomly. It is a very reasonable-looking wrong answer.
+>
+> And remember that check I flagged twenty minutes ago, the one that looked like
+> belt-and-braces? That is the only reason this scores as a miss instead of being quietly
+> compared as a string. **Validate against your own enum, not just against the ground
+> truth.**
+>
+> **Second — look at which one it got completely wrong.**
+>
+> Four tickets scored something. The single zero is *'checkout returning 500s for every
+> customer.'* The live outage. **The highest-stakes row in the set.**
+>
+> So this model is competent on invoices and API key rotations, and worst on the one ticket
+> that pages a human at three in the morning. That is exactly backwards from what you would
+> want — and **an aggregate of 0.6 hides it completely.**
+>
+> Which is the same lesson as Lab 4, arriving from a different direction. **Read the rows,
+> not the mean.**"
 
-**The model invented a team.** It answered `"team": "marketing"` — not one of the three
-values in the enum. It lifted the word straight out of the ticket text, which says *"the
-whole marketing team"*. That is what a language model does when a field looks like a slot:
-it fills it from context. The `parsed.get("team") in TEAMS` guard in `verify()` is the only
-reason that scores as a miss rather than being quietly compared as a string. **Validate
-against your enum, not just against the ground truth.**
-
-**And look at which one it got completely wrong.** Four tickets scored something. The single
-0.0 is the live outage affecting every customer — the highest-stakes row in the set. The
-model is competent on invoices and API keys and worst on the one that pages someone at 3am.
-An aggregate of 0.6 hides that entirely. **Read the rows, not just the mean.**
+> **❓ IF THEY ASK**
+>
+> **"Would a bigger model fix the outage row?"**
+> "Probably, partly — and now you can *measure* whether it does, for about a cent, which is
+> the whole point of having built this. That is a much better position than arguing about it."
+>
+> **"Five tickets is not a lot."**
+> "It is not, and I would not make a decision on five. It is enough to show you the
+> machinery. For a real evaluation you want hundreds, and the good news is that adding them
+> is a data problem, not an engineering one — the environment does not change."
+>
+> **"How would we use this against our own tickets?"**
+> "Swap the data file and the two field names in the verifier. Genuinely. **The hard part is
+> not the code — it is agreeing internally what the correct answer is**, and that is a
+> conversation with your support leads, not an engineering task."
+>
+> **"Can this run in CI on every model upgrade?"**
+> "That is exactly the use I would push you toward. It is a directory in your repo, it runs
+> from the command line, and it exits with a number. A regression test for your agent."
 
 **Two mechanical notes for whoever repeats this.** `verifier_metadata` is *not* echoed into
 the rollouts file — ground truth comes from your input JSONL. And the output is re-sorted
@@ -597,9 +1051,28 @@ version. It is the best teaching moment in the lab and the only cuttable part.
 
 ---
 
-## Part 3 — Megatron Bridge
+## Part 3 — Megatron Bridge  🎤 LIVE
+
+**The only lab that needs a GPU, a 37 GB image and NGC credentials.** Highest risk of the
+six. If it stalls, talk over the code on the slide and move on — do not debug live.
+
+---
 
 ### 3.1 Lab 6 — HF in, Megatron out, HF back ✅
+
+> **🎤 SAY BEFORE**
+>
+> "Third question, and the last one. *How do I make it better at my task?*
+>
+> You have a number now, so you could train against it. Which raises a question people ask me
+> constantly, usually about six months too late: **if I train with NVIDIA's stack, am I locked
+> into NVIDIA's stack?**
+>
+> So let me just show you. I am going to take a model off Hugging Face, convert it into
+> Megatron's format — the sharded, parallelism-aware layout you train large models in — and
+> then convert it straight back out again.
+>
+> First, though, one thing I want you to see before we start."
 
 ```bash
 docker run --rm -it --gpus all -v $(pwd):/workdir -w /workdir \
@@ -614,10 +1087,27 @@ pip show megatron-bridge | head -3
 
 **Real output:** `Version: 0.1.0rc4`.
 
-**The container ships a release candidate.** Megatron Bridge is at 0.6.0 on PyPI; the
-supported install path is a container, and that container lags the library by five minor
-versions. Say it plainly — of the three tools in this workshop, this is the least settled.
-**Anyone building on it today should pin the image, not the package.**
+> **🎤 SAY AFTER** *(do this first, not as a footnote — it buys credibility for everything else)*
+>
+> "**Zero point one point zero, release candidate four.**
+>
+> The published package is on 0.6.0. The container — which is the *supported* way to install
+> this — is running a release candidate from five minor versions ago.
+>
+> I am showing you that on purpose. Of the three tools today, **this is the least settled
+> one**, and you would find that out in week two anyway. Better you hear it from me now.
+>
+> The practical advice that falls out of it: **pin the image, not the package.** There is no
+> supported pip install here, so the container *is* your version. Treat the tag as the thing
+> you control."
+
+> **❓ IF THEY ASK**
+>
+> **"Should we be using this in production then?"**
+> "For the round trip I am about to show you — it works, and it is exact, and I will prove
+> that rather than assert it. For building a platform on top of, I would pin hard, test on
+> every image bump, and keep an eye on the release notes. That is not unusual advice for
+> something moving this fast; it is just advice people skip."
 
 The API happened to survive the gap: `from_hf_pretrained`, `to_megatron_provider`,
 `provide_distributed_model` and `save_hf_pretrained` all exist in 0.1.0rc4. Do not assume
@@ -649,8 +1139,13 @@ Megatron Bridge can convert 6 architectures:
   Qwen3MoeForCausalLM
 ```
 
-**Six.** Worth pausing on — this is a bridge for specific model families, not a general
-converter, and that is the honest scope. No torchrun, no download, no distributed init.
+> **🎤 SAY AFTER**
+>
+> "**Six.** Not 'any model' — six architecture families.
+>
+> Worth saying plainly: **this is a bridge for specific model families, not a general
+> converter.** If your model is on that list you are in good shape. If it is not, this is not
+> the tool, and you would rather know that now than after you have planned around it."
 
 **Then the round trip:**
 
@@ -662,6 +1157,11 @@ python megatron_bridge/roundtrip.py --model Qwen/Qwen2.5-0.5B
 `HF_TOKEN` inside the container — a second credential and a second failure mode, for a lab
 that demonstrates nothing architecture-specific. `Qwen2ForCausalLM` is on the supported list
 above, and the weights are 988 MB.
+
+> **🎤 SAY BEFORE**
+>
+> "Right — half a billion parameters, off Hugging Face, into Megatron's format, and straight
+> back out again. Watch the counters."
 
 **Real output**, trimmed:
 
@@ -678,23 +1178,33 @@ Converting to HuggingFace ━━━━━ 100% (170/170) Qwen2Bridge
 Success: All tensors from the original checkpoint were written.
 ```
 
-**Three things to point at.**
-
-**`Model parallel not initialized, initializing...`** — the provider brings up its own
-process group. No `torchrun`, no launcher, no rank plumbing for the single-GPU case. That is
-why this lab fits in five minutes.
-
-**`(170/170)`, twice.** Import and export both walk the same 170 conversion tasks. The
-conversion is per-parameter and parallelism-aware, which is why it never needs both complete
-models in memory at once.
-
-**`Success: All tensors from the original checkpoint were written.`** That is the bridge's
-own check, not the script's. But do not stop there — see below.
-
-**Say:** train with Megatron's parallelism, serve with anyone's inference engine. The weights
-were never trapped in either format.
+> **🎤 SAY AFTER** *(three things, in this order)*
+>
+> "Three things to point at, and then one more that matters more than all of them.
+>
+> **First — `Model parallel not initialized, initializing`.** It brought up its own process
+> group. No `torchrun`, no launcher, no rank plumbing. For the single-GPU case it just works,
+> and that is why this fits in five minutes instead of a morning.
+>
+> **Second — look at that count. `170 of 170`, and it appears twice.** Once importing, once
+> exporting. The conversion walks parameter by parameter in both directions. That is what lets
+> it convert a model far larger than the card, because it never needs both complete copies in
+> memory at the same time.
+>
+> **Third — four hundred and ninety-four million parameters, out to Megatron and back, in
+> seconds.**
+>
+> And at the bottom: *'Success: all tensors from the original checkpoint were written.'
+>
+> Now. **That is the tool telling me the tool worked.** I would like something better than
+> that."
 
 #### Prove it rather than trusting the banner
+
+> **🎤 SAY BEFORE**
+>
+> "So let us not take its word for it. I am going to load the original checkpoint and the one
+> we just exported, and compare them **tensor by tensor.**"
 
 ```bash
 python - <<'PY'
@@ -724,17 +1234,45 @@ bit-identical: 290/290
 largest deviation: 0
 ```
 
-**Every tensor, bit for bit.** Not "close enough in bf16" — identical. That is the line to
-say out loud, because a lossy round trip would be a perfectly reasonable thing to fear and
-this settles it in one command.
+> **🎤 SAY AFTER** *(this is the close of the whole session — land it)*
+>
+> "**Two hundred and ninety tensors. Two hundred and ninety identical. Largest deviation:
+> zero.**
+>
+> Not 'close enough in sixteen-bit floating point'. Not 'within tolerance'. **The same bits.**
+>
+> That is the answer to the lock-in question, and it is a measured answer rather than a
+> promise. Your weights go into Megatron's format for training, and they come back out as an
+> ordinary Hugging Face checkpoint that anything can load. **Train with NVIDIA's parallelism,
+> serve with anyone's inference engine.** The weights were never trapped in either format.
+>
+> And notice what I actually did there. The tool told me it had succeeded — and I checked
+> anyway. **A tool reporting its own success is not evidence.**
+>
+> Which is, I realise, the third time today I have said a version of the same thing. Lab 4:
+> read the rows, not the mean. Lab 5: read the rows, not the mean. And now: diff the tensors,
+> do not trust the banner.
+>
+> If you take one habit out of this room rather than one product, take that one."
 
-**290 tensors, but 170 conversion tasks.** Someone will notice. The bridge groups parameters
-— fused QKV projections and the like — so one task can carry several Hugging Face tensors.
-Both numbers are correct.
-
-A tool reporting its own success is not evidence. Diffing every tensor is. This is also the
-habit worth leaving the room with, and it is the same one as Lab 5: **check the rows, not
-the summary.**
+> **❓ IF THEY ASK**
+>
+> **"Why 290 tensors but 170 conversion tasks?"**
+> "Good catch. The bridge groups parameters — fused query-key-value projections and the like —
+> so one conversion task can carry several Hugging Face tensors. Both numbers are correct."
+>
+> **"Would it still be bit-identical after actually training?"**
+> "No, and it should not be — training changes the weights, that is the point. What this shows
+> is that the *conversion* is not what changes them. You are measuring the pipe, not the water."
+>
+> **"What about optimiser state? Can we resume training after a round trip?"**
+> "That is a different and harder question, and I would not want to answer it from the stage
+> without checking. What you have seen verified here is the weights."
+>
+> **"Does this work for models bigger than one GPU?"**
+> "That is the case it is built for — the conversion is parallelism-aware and works parameter
+> by parameter, which is exactly why it does not need both complete models resident. I have
+> shown you a half-billion-parameter model because it fits in a five-minute demo."
 
 **Still the highest-risk lab of the six** — it is the only one needing a GPU, a 37 GB image
 and NGC credentials. If it stalls on the day, talk over the code on the slide and move on.
