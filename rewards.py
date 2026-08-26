@@ -251,6 +251,96 @@ def matrix(d):
     print()
 
 
+def _user_text(row):
+    """The user turn of a task, wherever this file happens to keep it."""
+    for holder in (row.get("responses_create_params"), row):
+        if not isinstance(holder, dict):
+            continue
+        msgs = holder.get("input") or holder.get("messages")
+        if isinstance(msgs, list):
+            for m in reversed(msgs):
+                if isinstance(m, dict) and m.get("role") == "user":
+                    c = m.get("content")
+                    if isinstance(c, list):
+                        c = " ".join(x.get("text", "") for x in c if isinstance(x, dict))
+                    if c:
+                        return str(c)
+    return None
+
+
+def triage(rollouts, data):
+    """Lab 5's table: ticket, ground truth, what the model said, reward.
+
+    The rollouts file carries `reward` and `parsed` but NOT the ticket text or
+    the ground truth -- `verifier_metadata` is not echoed back into it. So this
+    joins against the input data, matching on the ticket text rather than on
+    line position, because the two files are not in the same order.
+    """
+    if not os.path.exists(rollouts):
+        sys.exit(f"no such file: {rollouts}")
+    if not os.path.exists(data):
+        sys.exit(f"no such file: {data}\n"
+                 "Pass the input jsonl with --data, e.g.\n"
+                 "  --data resources_servers/support_triage/data/example.jsonl")
+
+    truth = {}
+    for line in open(data):
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        t = _user_text(r)
+        if t:
+            truth[t.strip()] = r.get("verifier_metadata") or {}
+
+    rows, unmatched = [], 0
+    for line in open(rollouts):
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        t = _user_text(r)
+        g = truth.get(t.strip()) if t else None
+        if g is None:
+            unmatched += 1
+        rows.append((t, g, r.get("parsed"), r.get("reward")))
+
+    if unmatched == len(rows) and rows:
+        print("\n  Could not match any rollout to the input data.\n"
+              "  The rollouts file does not carry the ticket text where expected.\n"
+              "  Keys on the first rollout row:\n")
+        first = json.loads(open(rollouts).readline())
+        for k in sorted(first):
+            print(f"    {k}")
+        print("\n  Send that list and I can fix the join.\n")
+        return
+
+    def fmt(d):
+        if not isinstance(d, dict):
+            return "-"
+        return f"{d.get('severity','?')} / {d.get('team','?')}"
+
+    print()
+    print(f"  {'TICKET':<52}{'TRUTH':<16}{'MODEL SAID':<16}{'REWARD':>7}")
+    print("  " + "-" * 89)
+    total = 0.0
+    for t, g, p, rw in rows:
+        total += rw if isinstance(rw, (int, float)) else 0.0
+        tick = (t or "(no ticket text)").replace("\n", " ")
+        print(f"  {tick[:50]:<52}{fmt(g):<16}{fmt(p):<16}"
+              f"{'-' if rw is None else f'{rw:.1f}':>7}")
+    print("  " + "-" * 89)
+    if rows:
+        print(f"  mean reward {total/len(rows):.2f} across {len(rows)} tickets")
+    if unmatched:
+        print(f"  ** {unmatched} rollout(s) had no matching ticket in the data file")
+    print()
+    print("  Look for a team that is not one of the allowed values -- the model")
+    print("  fills an unfamiliar field from whatever it saw in the ticket text.")
+    print("  Then look at WHICH one scored zero, and how important that ticket is.")
+    print()
+
+
 def rows_detail(path):
     if not os.path.exists(path):
         sys.exit(f"no such file: {path}")
@@ -296,11 +386,17 @@ if __name__ == "__main__":
     ap.add_argument("--rows", metavar="FILE.jsonl", help="per-row detail for one run")
     ap.add_argument("--matrix", action="store_true",
                     help="every run's per-row extraction, side by side")
+    ap.add_argument("--triage", metavar="ROLLOUTS.jsonl",
+                    help="Lab 5 table: ticket, ground truth, model answer, reward")
+    ap.add_argument("--data", default="resources_servers/support_triage/data/example.jsonl",
+                    help="input jsonl to join --triage against")
     ap.add_argument("--raw", action="store_true",
                     help="dump every numeric key found, for when the table shows dashes")
     a = ap.parse_args()
     if a.raw:
         show_raw(a.dir)
+    elif a.triage:
+        triage(a.triage, a.data)
     elif a.matrix:
         matrix(a.dir)
     elif a.rows:

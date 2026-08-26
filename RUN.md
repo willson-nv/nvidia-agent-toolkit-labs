@@ -1374,12 +1374,27 @@ Lab 3 — the model is emitting 14 tokens of JSON instead of paragraphs of reaso
 **Then open the rollouts and go through them one at a time.** This is the payoff:
 
 ```bash
-python - <<'PY'
-import json
-for i, r in enumerate(map(json.loads, open("results/triage_rollouts.jsonl"))):
-    print(f"row {i}  reward={r.get('reward')}  parsed={r.get('parsed')}")
-PY
+python3 rewards.py --triage results/triage_rollouts.jsonl
 ```
+
+```
+  TICKET                                              TRUTH           MODEL SAID       REWARD
+  -----------------------------------------------------------------------------------------
+  Checkout has been returning 500s for every custome  P0 / infra      P1 / auth           0.0
+  SSO login loops back to the sign-in page for the w  P1 / auth       P1 / marketing      0.5
+  Nightly batch job has not run for three days and n  P1 / infra      P2 / infra          0.5
+  Could someone rotate the API key for the staging t  P2 / auth       P2 / auth           1.0
+  The March invoice shows the wrong VAT rate on line  P2 / billing    P2 / billing        1.0
+```
+
+> **Why this needs a join rather than a `for` loop over the rollouts.** The rollouts file
+> carries `reward` and `parsed` — **but not the ticket text and not the ground truth.**
+> `verifier_metadata` is not echoed back into it. So a plain loop gives you two of the four
+> columns and you cannot tell which ticket you are looking at.
+>
+> `--triage` joins the rollouts to `data/example.jsonl` **on the ticket text**, not on line
+> position, because the two files are not in the same order. Point it somewhere else with
+> `--data`.
 
 **Real result:**
 
