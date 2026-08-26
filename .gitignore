@@ -4,6 +4,18 @@ checkpoints/
 env.yaml            # model endpoint credentials -- never commit this
 hf_exports/
 
+# Where `gym env init` and `gym env start` build environments on the box, each
+# with its own 174-package venv inside. Entirely regenerable: the canonical
+# copy of our environment lives in gym/support_triage/ and RUN.md step 2 copies
+# it in.
+#
+# This was NOT ignored until it nearly cost us. A detached HEAD tidy-up with
+# `git clean -fd` would have deleted the whole tree -- the support_triage
+# environment and every warm venv with it -- because untracked-but-not-ignored
+# is exactly what `clean` is for.
+resources_servers/
+outputs/
+
 # Per-server virtualenvs Gym builds on demand
 .venv/
 venv/
