@@ -5,6 +5,12 @@
 #   bash gymclean.sh --dry-run    show targets, kill nothing
 #   bash gymclean.sh --yes        do not ask
 #
+# ⚠ RUN THIS BEFORE YOU START, NEVER WHILE SOMETHING IS RUNNING.
+# It cannot tell a healthy environment from an orphaned one -- a running
+# `gym env start` looks exactly like the wreckage of a previous one, and both
+# get killed. With --yes there is no prompt to catch it. If your terminal shows
+# "[1]+ Killed  gym env start ...", this script is why.
+#
 # WHY YOU NEED THIS
 # `gym env start` runs a Ray head plus three servers in the foreground. Close
 # that terminal without Ctrl-C -- or let `gym eval reverify` spin up its own
@@ -137,6 +143,11 @@ done
 if [ "$DRY" = 1 ]; then
   warn "--dry-run: nothing was signalled"
   exit 0
+fi
+
+if [ "$YES" = 1 ]; then
+  warn "--yes: killing without asking. If a healthy 'gym env start' is running,"
+  warn "       this kills that too. It cannot tell the difference."
 fi
 
 if [ "$YES" = 0 ]; then
