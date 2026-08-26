@@ -418,9 +418,75 @@ gym eval reverify --resources-server mcqa --model-type inference_provider \
 Omit `--resources-server` and you get `No server instances are configured, so there is
 nothing to run` — which never hints that re-passing the selector is the fix.
 
+#### Where the results go, and how to read them
+
+Every run writes **two files** next to whatever you passed to `--output`:
+
+| File | What is in it |
+|---|---|
+| `results/rv_<name>.jsonl` | one line per rollout, re-scored — `reward`, `expected_answer`, `extracted_answer` |
+| `results/rv_<name>_aggregate_metrics.json` | the `Key metrics` block, as JSON |
+
+**The printed metrics are easy to miss.** They land in the middle of ~20 seconds of Ray
+startup chatter and a spray of GCS shutdown warnings, so live they are gone off the top of
+the terminal before you have finished the sentence. Read them back instead:
+
+```bash
+python3 rewards.py                                  # compare every run in results/
+python3 rewards.py --rows results/rv_custom_regex.jsonl   # per-row detail
+```
+
+```
+  RUN                      REWARD   ACCURACY   NO_ANSWER
+  ------------------------------------------------------
+  rollouts                  0.200      20.0%       80.0%
+  lenient_boxed             0.200      20.0%       80.0%
+  lenient_answer_colon      0.000       0.0%      100.0%
+  custom_regex              0.800      80.0%        0.0%
+```
+
+**That table is the lab.** Put it on screen at the end rather than asking the room to
+remember four numbers you read out over twenty minutes.
+
+The per-row view is what makes the close land — it shows row 4 recovering as **C** against
+an expected **I**, flagged `MISS`.
+
 #### Step 1 — tour the shipped grading modes
 
-`MCQAResourcesServerConfig` declares four. Run the sweep. **Real numbers, verified:**
+**First, where the modes are actually declared.** The `mcqa` environment is not in this
+repo — it ships inside the installed package, which is why `sed` on
+`resources_servers/mcqa/app.py` finds nothing:
+
+```bash
+SP=/home/ubuntu/venv-gym/lib/python3.13/site-packages/resources_servers/mcqa
+sed -n '/class MCQAResourcesServerConfig/,/^class /p' $SP/app.py
+```
+
+```python
+class MCQAResourcesServerConfig(BaseResourcesServerConfig):
+    REVERIFY_MODE: ClassVar[ReverifyMode] = ReverifyMode.STATELESS
+    grading_mode: Optional[
+        Literal[
+            "strict_single_letter_boxed",
+            "lenient_boxed",
+            "lenient_answer_colon",
+            "lenient_answer_colon_md",
+        ]
+    ] = None
+```
+
+**That is worth putting on screen.** Those four strings are the entire set of opinions the
+vendor has about how to read an answer — and in a moment you will find that none of them
+help. `REVERIFY_MODE = STATELESS` on the line above is what permits replay at all.
+
+The whole file is worth a look while you are in there — `verify()` is at the bottom and it
+is short:
+
+```bash
+sed -n '/async def verify/,/^def /p' $SP/app.py
+```
+
+Run the sweep. **Real numbers, verified:**
 
 | `grading_mode` | reward | no_answer |
 |---|---|---|
