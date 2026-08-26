@@ -165,15 +165,32 @@ def matrix(d):
     the aggregate table tells you a mode scored 0.2, this tells you *which two
     rows* it read and which it did not.
     """
-    files = sorted(glob.glob(os.path.join(d, "rv_*.jsonl")))
+    SKIP = ("_materialized_inputs.jsonl", "_failures.jsonl")
+    files = [f for f in sorted(glob.glob(os.path.join(d, "rv_*.jsonl")))
+             if not f.endswith(SKIP)]
     base = os.path.join(d, "mcqa_rollouts.jsonl")
     if os.path.exists(base):
         files.insert(0, base)
-    files = [f for f in files if not f.endswith("_materialized_inputs.jsonl")]
     if not files:
         sys.exit(f"no rollout files in {d}/ — run Lab 3 first")
 
-    runs, expected, width = [], {}, 0
+    def task_key(r, fallback):
+        """A stable identity for a task, NOT its position in the file.
+
+        Gym re-sorts its output ("Sorting results to ensure consistent
+        ordering"), and reverify does not necessarily preserve the order it
+        read. Lining these files up by line number puts a different task in
+        each column and scrambles the expected answers -- verified on the box,
+        where the one correct row appeared at index 0, 2 and 3 in three files
+        describing the same five tasks.
+        """
+        for k in ("_ng_task_index", "uuid", "id"):
+            v = r.get(k)
+            if v is not None:
+                return v
+        return f"line{fallback}"
+
+    runs, expected, conflicts, width = [], {}, set(), 0
     for f in files:
         cells, tot, n = {}, 0.0, 0
         for i, line in enumerate(open(f)):
@@ -181,22 +198,31 @@ def matrix(d):
                 r = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            key = task_key(r, i)
             exp, got = r.get("expected_answer"), r.get("extracted_answer")
             rw = r.get("reward")
             if exp is not None:
-                expected[i] = str(exp)
+                if key in expected and expected[key] != str(exp):
+                    conflicts.add(key)
+                expected[key] = str(exp)
             if got is None or got == "":
-                cells[i] = "."                      # nothing extracted at all
+                cells[key] = "."                    # nothing extracted at all
             else:
-                cells[i] = str(got) + ("" if str(got) == str(exp) else "*")
+                cells[key] = str(got) + ("" if str(got) == str(exp) else "*")
             if isinstance(rw, (int, float)):
                 tot += rw; n += 1
+        if not cells:
+            continue                                # empty file, e.g. a failures log
         runs.append((label(f), cells, tot / n if n else None))
         width = max(width, len(label(f)))
-        expected.setdefault(0, "?")
 
-    idx = sorted(expected)
-    hdr = "  " + "RUN".ljust(width + 2) + "".join(f"R{i}".rjust(6) for i in idx) + "REWARD".rjust(10)
+    if not runs:
+        sys.exit(f"no rollouts with content in {d}/")
+
+    def sort_key(k):
+        return (0, k) if isinstance(k, int) else (1, str(k))
+    idx = sorted(expected, key=sort_key)
+    hdr = "  " + "TASK".ljust(width + 2) + "".join(f"T{i}".rjust(6) for i in idx) + "REWARD".rjust(10)
     print()
     print(hdr)
     print("  " + "EXPECTED".ljust(width + 2) + "".join(expected[i].rjust(6) for i in idx))
@@ -207,6 +233,14 @@ def matrix(d):
         line += ("-" if mean is None else f"{mean:.3f}").rjust(10)
         print(line)
     print()
+    print("  Columns are TASKS, matched on _ng_task_index — not line numbers.")
+    print("  Gym re-sorts its output, so lining these files up by position would")
+    print("  put a different task in every column.")
+    print()
+    if conflicts:
+        print(f"  ** {len(conflicts)} task(s) disagree on the expected answer across files.")
+        print("     Your rollout files describe different data — re-run Lab 3 clean.")
+        print()
     print("   .  nothing extracted — the grader could not find an answer")
     print("   X  extracted that letter, and it matched")
     print("   X* extracted that letter, and it was WRONG")

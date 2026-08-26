@@ -600,20 +600,30 @@ python3 rewards.py --matrix
 **Real output** — verified on the box:
 
 ```
-  RUN                             R0    R1    R2    R3    R4    REWARD
-  EXPECTED                         E     B     C     E     I
+  TASK                            T0    T1    T2    T3    T4    REWARD
+  EXPECTED                         C     E     B     I     E
   --------------------------------------------------------------------
-  rollouts                         .     .     C     .     .     0.200
-  strict_single_letter_boxed       .     .     C     .     .     0.200
-  lenient_boxed                    .     .     C     .     .     0.200
+  rollouts                         .     .     B     .     .     0.200
+  strict_single_letter_boxed       .     .     B     .     .     0.200
+  lenient_boxed                    .     .     B     .     .     0.200
   lenient_answer_colon             .     .     .     .     .     0.000
-  lenient_answer_colon_md          .     .     C     .     .     0.200
-  custom_regex                     E     B     C     E    C*     0.800
+  lenient_answer_colon_md          .     .     B     .     .     0.200
+  custom_regex                     C     E     B    C*     E     0.800
 
    .  nothing extracted — the grader could not find an answer
    X  extracted that letter, and it matched
    X* extracted that letter, and it was WRONG
 ```
+
+> **Columns are tasks, not line numbers.** They are matched on `_ng_task_index`, because
+> **Gym re-sorts its output** — it prints *"Sorting results to ensure consistent ordering"* —
+> and reverify does not necessarily write rows back in the order it read them. Lining these
+> files up by position puts a different task in every column and scrambles the expected
+> answers. The first version of this tool did exactly that, and produced a grid where the one
+> correct answer appeared at index 0, 2 and 3 in three files describing the same five tasks.
+>
+> This is the same trap as Lab 5's *"do not zip rollouts against inputs by index"*. It is
+> easy to fall into twice.
 
 **This is the single best artefact in Lab 4** — put it on screen for the close instead of the
 aggregate table. Three things are visible at once that no summary conveys:
