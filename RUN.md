@@ -900,7 +900,7 @@ box; the outputs are real.**
 ```bash
 gym env init --resources-server support_triage
 find resources_servers/support_triage -type f \
-  -not -path '*/.venv/*' -not -path '*/__pycache__/*' | sort
+  -not -path '*/.venv/*' -not -path '*/__pycache__/*' -not -path '*/.pytest_cache/*' | sort
 ```
 
 > **⚠ Those exclusions matter on any run after the first.** Once `gym env test` has run,
@@ -933,6 +933,35 @@ resources_servers/support_triage/tests/test_app.py
 >
 > Notice what is *missing*, though. Look at `data/` — there is a `.gitignore` in there and
 > nothing else. **No example data.** Hold that thought for about four minutes; it matters."
+
+**Put the generated `verify()` on screen — it is two lines, and that is the whole point:**
+
+```bash
+sed -n '/async def verify/,/^if __name__/p' resources_servers/support_triage/app.py
+```
+
+**Real output** — verified on the box, this is the entire generated verifier:
+
+```python
+async def verify(self, body: BaseVerifyRequest) -> BaseVerifyResponse:
+    return BaseVerifyResponse(**body.model_dump(), reward=1.0)
+```
+
+> **🎤 SAY**
+>
+> "There it is. **Two lines.** Everything scores one point zero, unconditionally.
+>
+> So the environment is complete and functioning before I have written anything — it is just
+> **lying to me.** Every answer is perfect, including the wrong ones.
+>
+> And that is a better starting point than an empty file, because the plumbing is already
+> proven. The servers come up, the rollouts collect, the metrics aggregate. **The only thing
+> missing is the judgement** — and the judgement is the part that is yours."
+
+> **⚠ Do this before step 2 overwrites `app.py`.** Once the finished verifier is copied in,
+> the scaffold's version is gone. To see it again afterwards, make a throwaway:
+> `gym env init --resources-server scaffold_peek`, look, then
+> `rm -rf resources_servers/scaffold_peek`.
 
 **⚠ Keep the scaffold's `requirements.txt`.** It generates `nemo-gym[dev]`. Shipped
 environments like `mcqa` instead carry `-e nemo-gym[dev] @ ../../`, and copying that is a
@@ -1530,7 +1559,7 @@ Do not debug live.
 | Warnings continue after `gymclean.sh` says clean | that terminal owns a dead process group; the text is on its tty, not being generated | close that window |
 | `gym env start` hangs or fails for no reason | orphans from a previous run still holding slots | `bash gymclean.sh` first |
 | `gym env init` exits immediately | the directory already exists | `rm -rf` it, but note that also removes its warm venv |
-| `find` on a lab dir returns thousands of lines | the per-server `.venv` is built — 174 packages | add `-not -path '*/.venv/*' -not -path '*/__pycache__/*'`; **do not delete the venv** |
+| `find` on a lab dir returns thousands of lines | the per-server `.venv` is built — 174 packages | exclude `.venv`, `__pycache__` and `.pytest_cache`; **do not delete the venv** |
 | Relay registration raises `TypeError` | callback signatures moved between releases | check the middleware guide for the pinned version |
 | Lab 6 cannot find `megatron.bridge` | running outside the container | there is no pip install; use the NGC image |
 | `docker pull` unauthorised | no NGC credentials | `docker login nvcr.io` |
