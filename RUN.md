@@ -1497,10 +1497,16 @@ docker run --rm -it --gpus all -v $(pwd):/workdir -w /workdir \
 **Check the bridge version first.** This is the headline of Part 3, not a preliminary:
 
 ```bash
-pip show megatron-bridge | head -3
+python3 -c "import importlib.metadata as m; print(m.version('megatron-bridge'))"
 ```
 
-**Real output:** `Version: 0.1.0rc4`.
+**Real output:** `0.1.0rc4`.
+
+> **Why not `pip show megatron-bridge | head -3`?** `head` closes the pipe as soon as it has
+> its three lines, `pip` is still writing, and Python prints a `BrokenPipeError` traceback at
+> shutdown. Harmless — and it puts red text on screen at exactly the moment you are making a
+> point about version drift. `sed -n '1,3p'` is safe because it reads to the end; so is a
+> plain `grep`. **`grep -m3` is not** — it exits early, same as `head`.
 
 > **🎤 SAY AFTER** *(do this first, not as a footnote — it buys credibility for everything else)*
 >
