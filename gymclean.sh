@@ -73,8 +73,32 @@ right_kind() {
 
 cmdline() { tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null; }
 
+# ------------------------------------------------- the head server's port
+# Gym's head server binds 127.0.0.1:11000 -- a FIXED port, unlike every other
+# server it starts. If a previous head is still holding it, the next
+# `gym env start` dies with:
+#
+#   ERROR: [Errno 98] error while attempting to bind on address
+#          ('127.0.0.1', 11000): address already in use
+#   RuntimeError: Head server finished unexpectedly!
+#
+# and every eval afterwards 500s, because the agent server has no head to talk
+# to. The client-side error names none of this. Matching on process name missed
+# it on the box; the port is the reliable signal, so we check it directly.
+HEAD_PORT=11000
+port_holder() {
+  ss -ltnp 2>/dev/null | awk -v p=":$HEAD_PORT\$" '$4 ~ p' \
+    | grep -o 'pid=[0-9]*' | cut -d= -f2 | head -1
+}
+
 # ------------------------------------------------------------------ collect
 declare -A TARGET=()
+
+HP="$(port_holder)"
+if [ -n "$HP" ] && [ "$HP" != "1" ] && [ "$HP" != "$SELF" ]; then
+  cl="$(cmdline "$HP")"
+  TARGET["$HP"]="[holds :$HEAD_PORT] ${cl:-（unknown）}"
+fi
 for p in "${PATTERNS[@]}"; do
   while read -r pid; do
     [ -z "$pid" ] && continue
@@ -146,6 +170,14 @@ STILL=""
 for pid in "${!TARGET[@]}"; do
   kill -0 "$pid" 2>/dev/null && STILL="$STILL $pid"
 done
+HP2="$(port_holder)"
+if [ -n "$HP2" ]; then
+  warn "port $HEAD_PORT is STILL held by pid $HP2 — the next 'gym env start' will fail"
+  echo "      sudo kill -9 $HP2      # or: sudo fuser -k $HEAD_PORT/tcp"
+else
+  ok "port $HEAD_PORT is free — 'gym env start' can bind its head server"
+fi
+
 if [ -z "${STILL// /}" ]; then
   ok "clean — the GCS warnings will stop"
   echo

@@ -1739,6 +1739,8 @@ Do not debug live.
 | `--resources-server <name>` cannot resolve | the config's top-level key differs from the server name | make them the same string |
 | Every grading mode reports **0.0 / no_answer 100%** | the rollouts file is empty or stale — you are grading nothing | curl the endpoint (Lab 3); then `rm -f results/rv_* results/mcqa_rollouts*` and re-run Lab 3 |
 | `rewards.py` shows a run you did not just do | derived `rv_*` files from an earlier session are still there | `rm -f results/rv_*` before a fresh sweep |
+| `gym env start` dies with `RuntimeError: Head server finished unexpectedly!` | a previous head still holds **127.0.0.1:11000**, its fixed port — look for `address already in use` a few lines above | `bash gymclean.sh` (checks the port), or `fuser -k 11000/tcp` then wait 2s |
+| Every eval 500s no matter what you change | same cause — the head never bound, so the agent server has nothing to talk to | free port 11000 first, then restart the servers |
 | Terminal floods with `Failed to get cluster ID from GCS server: TimedOut` | orphaned Ray workers whose head died — they retry forever **and hold worker slots** | `bash gymclean.sh` |
 | Warnings continue after `gymclean.sh` says clean | that terminal owns a dead process group; the text is on its tty, not being generated | close that window |
 | `gym env start` hangs or fails for no reason | orphans from a previous run still holding slots | `bash gymclean.sh` first |
