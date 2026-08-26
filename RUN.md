@@ -162,7 +162,14 @@ exit before the subscriber has printed.
 > just **measures** how long the call took.
 >
 > I am going to make two calls. A good one, and a bad one. **And I want you to count
-> something for me: count how many times the word `search` appears as a scope.**"
+> something for me. Count the scopes whose name is exactly `search`** — ignore the ones with
+> a dot in them, those are the middleware reporting on itself."
+
+> **⚠ Be precise about what you are asking them to count.** The word `search` appears **five**
+> times in the good call, because the guardrail's own scope is named `search.require_query`.
+> Only **two** of those are scopes named `search`. If you say "count the searches" the room
+> counts five, your punchline lands wrong, and you spend a minute recovering. Say *"named
+> exactly `search`"*, or point at the two lines as you say it.
 
 ```bash
 python relay/lab2_middleware.py
