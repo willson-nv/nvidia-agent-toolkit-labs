@@ -32,6 +32,31 @@ a sentence on the page you can simply read.
 
 ---
 
+## ⚠ Run this first, every single time
+
+```bash
+bash modelcheck.sh
+```
+
+**Five seconds. It asks the endpoint whether the model in `env.yaml` still exists.**
+
+On 26 August 2026 the pinned model was retired **at 09:00Z, mid-session**. Labs 3 to 5 then
+failed with a bare HTTP 500 that named nothing — the real message was a `410 Gone` buried
+inside the model server, four layers below the CLI:
+
+> *"The model `nvidia/nemotron-mini-4b-instruct` has reached its end of life on
+> 2026-08-26T09:00:00Z and is no longer available."*
+
+Diagnosing that from the client side took over an hour. `modelcheck.sh` says it in one line.
+
+| It prints | Meaning |
+|---|---|
+| `ALIVE — replied 'B'` | good, carry on |
+| `FAILED HTTP 410` | **the model was retired.** Pick another and update `env.yaml` |
+| `FAILED HTTP 401/403` | your API key is rejected — get a fresh one from build.nvidia.com |
+
+---
+
 ## Part 0 — Setup  🔇 NO AUDIENCE
 
 Days before, on your own. Nothing here is scripted because nobody is watching.
@@ -1740,6 +1765,7 @@ Do not debug live.
 | Every grading mode reports **0.0 / no_answer 100%** | the rollouts file is empty or stale — you are grading nothing | curl the endpoint (Lab 3); then `rm -f results/rv_* results/mcqa_rollouts*` and re-run Lab 3 |
 | `rewards.py` shows a run you did not just do | derived `rv_*` files from an earlier session are still there | `rm -f results/rv_*` before a fresh sweep |
 | `[1]+ Killed  gym env start ...` appears | you ran `gymclean.sh` **while the server was running** — it cannot tell healthy from orphaned | clean first, start second, never the other way round |
+| Every lab 3-5 fails with a bare `500` and the servers started fine | **the model may have been retired** — the 410 is buried in the model server, invisible to the CLI | `bash modelcheck.sh` |
 | `gym env start` dies with `RuntimeError: Head server finished unexpectedly!` | a previous head still holds **127.0.0.1:11000**, its fixed port — look for `address already in use` a few lines above | `bash gymclean.sh` (checks the port), or `fuser -k 11000/tcp` then wait 2s |
 | Every eval 500s no matter what you change | same cause — the head never bound, so the agent server has nothing to talk to | free port 11000 first, then restart the servers |
 | Terminal floods with `Failed to get cluster ID from GCS server: TimedOut` | orphaned Ray workers whose head died — they retry forever **and hold worker slots** | `bash gymclean.sh` |
