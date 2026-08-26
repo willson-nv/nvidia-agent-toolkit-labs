@@ -977,7 +977,51 @@ Without those two, `gym env test` prints "no tests ran" and step 6 quietly prove
 
 **Step 2 — the verifier** (~5 min)
 
-Paste `gym/support_triage/app.py`. Read `verify()` aloud.
+**The finished verifier is already in this repo** at `gym/support_triage/app.py`. Copy it
+over the scaffold's version:
+
+```bash
+cp gym/support_triage/app.py resources_servers/support_triage/app.py
+```
+
+Then put `verify()` on screen and read it aloud:
+
+```bash
+sed -n '/^SEVERITIES/,/^TEAMS/p;/async def verify/,/parsed=parsed)/p' \
+    resources_servers/support_triage/app.py
+```
+
+**This is what appears** — the whole of the judgement, verbatim from the repo:
+
+```python
+SEVERITIES = {"P0", "P1", "P2"}
+TEAMS = {"billing", "auth", "infra"}
+
+async def verify(self, body: SupportTriageVerifyRequest) -> SupportTriageVerifyResponse:
+    text = self._assistant_text(body.response)
+
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        # Not JSON at all. No partial credit for prose.
+        return SupportTriageVerifyResponse(**body.model_dump(), reward=0.0, parsed=None)
+
+    truth = body.verifier_metadata
+    hits = 0
+    if parsed.get("severity") in SEVERITIES and parsed.get("severity") == truth.get("severity"):
+        hits += 1
+    if parsed.get("team") in TEAMS and parsed.get("team") == truth.get("team"):
+        hits += 1
+
+    # Partial credit, on purpose. Pass/fail gives a training loop almost
+    # nothing to work with; "one of two fields right" is a gradient.
+    return SupportTriageVerifyResponse(
+        **body.model_dump(), reward=hits / 2.0, parsed=parsed)
+```
+
+**If you prefer to build it live rather than copy it**, type it out from this listing — it is
+short enough. Copying is the safer choice on the day; typing is better if the room is small
+and engaged.
 
 > **🎤 SAY WITH `verify()` ON SCREEN**
 >
@@ -1019,8 +1063,43 @@ Paste `gym/support_triage/app.py`. Read `verify()` aloud.
 
 **Step 3 — the config** (~2 min)
 
-Set `domain: agent`. **Delete the generated `train` and `validation` dataset blocks** — they
-point at files the scaffold never created, and they require a licence field.
+```bash
+cp gym/support_triage/configs/support_triage.yaml \
+   resources_servers/support_triage/configs/support_triage.yaml
+cat resources_servers/support_triage/configs/support_triage.yaml
+```
+
+**This is what appears** — the whole config, verbatim from the repo:
+
+```yaml
+support_triage:
+  resources_servers:
+    support_triage:
+      entrypoint: app.py
+      domain: agent
+      verified: false
+      description: Single-step support-ticket triage, scored on severity and team
+      value: Route incoming tickets without a human first-pass
+
+support_triage_simple_agent:
+  responses_api_agents:
+    simple_agent:
+      entrypoint: app.py
+      resources_server:
+        type: resources_servers
+        name: support_triage
+      model_server:
+        type: responses_api_models
+        name: policy_model
+      datasets:
+      - name: example
+        type: example
+        jsonl_fpath: resources_servers/support_triage/data/example.jsonl
+```
+
+**Two changes from what the scaffold generated.** `domain: agent`, and the generated `train`
+and `validation` dataset blocks are **deleted** — they point at files the scaffold never
+created, and they require a licence field you have no reason to fill in.
 
 **The top-level key must equal the server name.** Every shipped environment uses one string
 for both (`mcqa:` → `resources_servers: mcqa:`), and `--resources-server <name>` resolves
@@ -1029,7 +1108,38 @@ against the top-level key. Naming them differently — `support_triage_resources
 
 **Step 4 — the data** (~2 min)
 
-Five rows, `responses_create_params` plus `verifier_metadata`. All synthetic.
+```bash
+cp gym/support_triage/data/example.jsonl \
+   resources_servers/support_triage/data/example.jsonl
+head -1 resources_servers/support_triage/data/example.jsonl | python3 -m json.tool
+```
+
+**This is what appears** — one row, and all five have this shape:
+
+```json
+{
+    "responses_create_params": {
+        "input": [
+            {
+                "role": "system",
+                "content": "Classify the support ticket. Reply with ONLY a JSON object and nothing else: {\"severity\": \"P0\"|\"P1\"|\"P2\", \"team\": \"billing\"|\"auth\"|\"infra\"}. P0 is a live outage, P1 is degraded or blocking for a group, P2 is everything else."
+            },
+            {
+                "role": "user",
+                "content": "Checkout has been returning 500s for every customer for the last 20 minutes."
+            }
+        ]
+    },
+    "verifier_metadata": {
+        "severity": "P0",
+        "team": "infra"
+    }
+}
+```
+
+**Point at the two halves.** `responses_create_params` is what the model sees.
+`verifier_metadata` is the correct answer, which it never sees — that is the field the
+scaffold silently drops if you do not declare it, and step 7 is about exactly that.
 
 > **🎤 SAY WITH THE DATA ON SCREEN**
 >
@@ -1064,8 +1174,14 @@ gym env validate --config resources_servers/support_triage/configs/support_triag
 **Step 6 — test** (~4 min)
 
 ```bash
+cp gym/support_triage/tests/test_app.py \
+   resources_servers/support_triage/tests/test_app.py
 gym env test --resources-server support_triage
 ```
+
+**That copy is not optional.** Without it you are running the scaffold's generated test, not
+the eight-case suite, and the output below will not match. The suite is what makes step 7
+work — it contains the regression test that catches the dropped ground truth.
 
 First run builds the per-server venv — **174 packages, a few seconds**. Warm runs are
 instant (`Checked 6 packages in 11ms`).
