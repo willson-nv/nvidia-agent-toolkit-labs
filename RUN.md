@@ -32,6 +32,30 @@ a sentence on the page you can simply read.
 
 ---
 
+## Starting over
+
+```bash
+bash reset.sh              # show what goes and what stays, ask, then do it
+bash reset.sh --dry-run    # show only
+```
+
+Puts the labs back to their pre-Lab-1 state. **Deletes** `results/`, `outputs/`,
+`hf_exports/`, the whole Lab 5 `resources_servers/support_triage/` environment, stale
+`__pycache__`, and `/tmp/ray`. **Keeps** `env.yaml`, both main venvs, the mcqa/agent/model
+per-server venvs, the uv cache and the 37 GB NeMo container.
+
+**Lab 5's environment has to go entirely** — `gym env init` refuses to run when the directory
+already exists, so leaving it means step 1 fails. It is safe to delete because the canonical
+copy lives in `gym/support_triage/` and step 2 copies it back.
+
+**The uv cache is the thing never to delete.** It is what makes a per-server venv rebuild take
+seconds rather than minutes — even `--deep`, which does drop the venvs, leaves it alone.
+
+It finishes with a readiness check: credentials present, venvs present, `results/` empty,
+`support_triage` gone, port 11000 free.
+
+---
+
 ## ⚠ Run this first, every single time
 
 ```bash

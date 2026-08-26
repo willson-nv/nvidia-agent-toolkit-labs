@@ -14,6 +14,8 @@ hf_exports/
 # environment and every warm venv with it -- because untracked-but-not-ignored
 # is exactly what `clean` is for.
 resources_servers/
+responses_api_agents/
+responses_api_models/
 outputs/
 
 # Per-server virtualenvs Gym builds on demand
