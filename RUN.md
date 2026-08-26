@@ -550,7 +550,33 @@ is short:
 sed -n '/async def verify/,/^def /p' $SP/app.py
 ```
 
-Run the sweep. **Real numbers, verified:**
+#### Now run the sweep — all four modes
+
+The single command above shows the *shape*. This runs the whole tour in one go, which is
+what you actually want on the day:
+
+```bash
+for m in strict_single_letter_boxed lenient_boxed lenient_answer_colon lenient_answer_colon_md; do
+  printf '  %-30s' "$m"
+  gym eval reverify --resources-server mcqa --model-type inference_provider \
+    --rollouts results/mcqa_rollouts.jsonl \
+    --inputs  results/mcqa_rollouts_materialized_inputs.jsonl \
+    --output  results/rv_$m.jsonl --overwrite \
+    ++mcqa.resources_servers.mcqa.grading_mode=$m > results/rv_$m.log 2>&1 \
+    && echo "ok" || echo "FAILED — see results/rv_$m.log"
+done
+
+python3 rewards.py
+```
+
+**Output goes to a log per mode, on purpose.** Each reverify spins up its own three-server
+Ray cluster — about twenty seconds of startup for under a second of grading, then a spray of
+GCS shutdown warnings. Watching that four times teaches nothing, and the numbers scroll away.
+`rewards.py` reads all four back at the end. **Budget about ninety seconds for the loop.**
+
+If a mode prints `FAILED`, its log has the reason — usually a missing selector.
+
+**Real numbers, verified:**
 
 | `grading_mode` | reward | no_answer |
 |---|---|---|
@@ -558,6 +584,10 @@ Run the sweep. **Real numbers, verified:**
 | `lenient_boxed` | 0.2 | 80% |
 | `lenient_answer_colon` | **0.0** | 100% |
 | `lenient_answer_colon_md` | 0.2 | 80% |
+
+**Running `strict_single_letter_boxed` explicitly is a control worth having** — it is already
+the default, so it should reproduce the Lab 3 baseline exactly. If it does not, something is
+wrong with the replay rather than with the modes, and the rest of the table means nothing.
 
 > **🎤 SAY AFTER THE SWEEP** *(walk down the four numbers)*
 >
