@@ -432,9 +432,24 @@ startup chatter and a spray of GCS shutdown warnings, so live they are gone off 
 the terminal before you have finished the sentence. Read them back instead:
 
 ```bash
-python3 rewards.py                                  # compare every run in results/
-python3 rewards.py --rows results/rv_custom_regex.jsonl   # per-row detail
+python3 rewards.py            # compare every run in results/
+python3 rewards.py --raw      # dump every metric key, when the table shows dashes
 ```
+
+Once you reach step 2 and the custom-regex run exists, the per-row view is the one that
+makes the close land:
+
+```bash
+python3 rewards.py --rows results/rv_custom_regex.jsonl
+```
+
+**Only runs you have actually done will appear.** Part-way through the sweep you will see
+two or three rows, not five — that is the script reading the directory, not an error.
+
+> **If every column shows a dash**, the metric names in your files are not the ones the
+> script matches. `python3 rewards.py --raw` prints every numeric key it found, which is
+> enough to fix it in one step. This happened on first use: the keys turned out to be
+> agent-prefixed, and an exact-match lookup found nothing.
 
 ```
   RUN                      REWARD   ACCURACY   NO_ANSWER
