@@ -21,30 +21,62 @@ import json
 import os
 import sys
 
-# The metric names Gym uses. We search for these rather than assuming the shape
-# of the file, because the aggregate JSON nests differently depending on whether
-# it came from `eval run` or `eval reverify`.
-WANT = ["mean/reward", "pass@1/accuracy", "pass@1/no_answer"]
+def flatten(obj, prefix="", out=None):
+    """Every numeric leaf in the file, keyed by its full dotted path.
 
-
-def find_metrics(obj, out=None, depth=0):
-    """Pull metric keys out of an arbitrarily nested dict."""
+    We do not assume a shape. `eval run` and `eval reverify` nest their
+    aggregate metrics differently, and the keys may or may not be prefixed with
+    the agent name -- so we flatten everything and then search.
+    """
     if out is None:
         out = {}
-    if depth > 6 or not isinstance(obj, dict):
-        return out
-    for k, v in obj.items():
-        if isinstance(v, (int, float)) and not isinstance(v, bool):
-            # keep the shortest path to each metric name
-            if k in WANT and k not in out:
-                out[k] = v
-            elif k.startswith("pass@1[") and "accuracy" in k and "pass@1/accuracy" not in out:
-                out["pass@1/accuracy"] = v
-            elif k.startswith("pass@1[") and "no_answer" in k and "pass@1/no_answer" not in out:
-                out["pass@1/no_answer"] = v
-        elif isinstance(v, dict):
-            find_metrics(v, out, depth + 1)
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            flatten(v, f"{prefix}.{k}" if prefix else str(k), out)
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            flatten(v, f"{prefix}[{i}]", out)
+    elif isinstance(obj, (int, float)) and not isinstance(obj, bool):
+        out[prefix] = obj
     return out
+
+
+def _first(flat, *predicates):
+    """First value whose key matches any predicate, in order of preference.
+
+    Returns None only when nothing matched. Note the explicit `is not None`
+    checks -- a reward of 0.0 is a real, meaningful result and must not be
+    treated as 'not found'. That bug hid a genuine 0.0 in the first version.
+    """
+    for pred in predicates:
+        for k, v in flat.items():
+            if pred(k.lower()):
+                return v
+    return None
+
+
+def find_metrics(obj):
+    flat = flatten(obj)
+    return {
+        "mean/reward": _first(
+            flat,
+            lambda k: k.endswith("mean/reward"),
+            lambda k: "mean/reward" in k,
+            lambda k: k.endswith("/reward") or k == "reward",
+        ),
+        "pass@1/accuracy": _first(
+            flat,
+            lambda k: "accuracy" in k and "pass@1" in k and "majority" not in k,
+            lambda k: "accuracy" in k and "majority" not in k,
+            lambda k: "accuracy" in k,
+        ),
+        "pass@1/no_answer": _first(
+            flat,
+            lambda k: "no_answer" in k and "pass@1" in k,
+            lambda k: "no_answer" in k,
+        ),
+        "_flat": flat,
+    }
 
 
 def label(path):
@@ -55,6 +87,27 @@ def label(path):
         if b.startswith(p):
             b = b[len(p):]
     return b or "(run)"
+
+
+def show_raw(d):
+    """Print every numeric key in every metrics file, so a shape change is
+    diagnosable in one command instead of a round trip."""
+    files = sorted(glob.glob(os.path.join(d, "*_aggregate_metrics.json")))
+    if not files:
+        sys.exit(f"no *_aggregate_metrics.json in {d}/")
+    for f in files:
+        print(f"\n=== {os.path.basename(f)} ===")
+        try:
+            flat = flatten(json.load(open(f)))
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"  unreadable: {e}")
+            continue
+        if not flat:
+            print("  (no numeric values at all — file may be empty or a list)")
+        for k, v in flat.items():
+            print(f"  {k:<58} {v}")
+    print("\nIf the table shows dashes, one of these key names is what it "
+          "should be matching. Send this output.\n")
 
 
 def compare(d):
@@ -90,6 +143,13 @@ def compare(d):
               f"{'-' if a is None else f'{a:.1f}%':>11}"
               f"{'-' if n is None else f'{n:.1f}%':>12}")
     print()
+    if all(r[1] and r[1].get("mean/reward") is None for r in rows if r[1]):
+        print("  Every value is a dash, which means the metric names in these files are")
+        print("  not the ones this script looks for. Run:")
+        print()
+        print("      python3 rewards.py --raw")
+        print()
+        return
     print("  Higher reward is better. A high no_answer means the grader could not")
     print("  read the response at all -- which is a different problem from a wrong")
     print("  answer, and has a different fix.")
@@ -139,5 +199,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", default="results", help="where the run outputs are")
     ap.add_argument("--rows", metavar="FILE.jsonl", help="per-row detail for one run")
+    ap.add_argument("--raw", action="store_true",
+                    help="dump every numeric key found, for when the table shows dashes")
     a = ap.parse_args()
-    rows_detail(a.rows) if a.rows else compare(a.dir)
+    if a.raw:
+        show_raw(a.dir)
+    elif a.rows:
+        rows_detail(a.rows)
+    else:
+        compare(a.dir)
