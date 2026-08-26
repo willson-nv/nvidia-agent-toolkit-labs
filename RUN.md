@@ -644,8 +644,19 @@ and start talking before you press return. If the warnings persist between runs,
 from an earlier lab is still alive:
 
 ```bash
-pkill -9 -f raylet; pkill -9 -f gcs_server; pkill -9 -f "ray::"
+bash gymclean.sh              # shows every target, asks, then kills
+bash gymclean.sh --dry-run    # show targets, kill nothing
 ```
+
+> **⚠️ Do not use a bare `pkill -9 -f raylet`.** `pkill -f` matches the *whole command
+> line*, so it also kills a `tail -f raylet.log`, an editor with a Ray file open, and — on
+> at least one host — PID 1, whose init carried the pattern in its argv. I did exactly this
+> while writing `gymclean.sh` and killed the machine I was testing on.
+>
+> `gymclean.sh` filters on the **executable name** (`ps -o comm=`), never PID 1, never its
+> own process group, and prints every target with its full command line before signalling
+> anything. Verified against decoys: `tail -f /var/log/raylet.log` and an editor holding
+> `notes-about-gcs_server.md` are both left alone.
 
 **Reverify is gated** on the server declaring `ReverifyMode.STATELESS`. `mcqa` does, so this
 all works. `--force` exists for servers that do not and prefixes its output `unsafe_` — the
@@ -1293,6 +1304,9 @@ Do not debug live.
 | `gym env test` says "no tests ran" | the per-server venv has no pytest | append `pytest` and `pytest-asyncio` to that server's `requirements.txt` |
 | Test fixtures fail with `Input should be a ... NeMoGymResponse` | a `SimpleNamespace` or bare dict is not accepted | build a real `NeMoGymResponse`; eight fields are required |
 | `--resources-server <name>` cannot resolve | the config's top-level key differs from the server name | make them the same string |
+| Terminal floods with `Failed to get cluster ID from GCS server: TimedOut` | orphaned Ray workers whose head died — they retry forever **and hold worker slots** | `bash gymclean.sh` |
+| Warnings continue after `gymclean.sh` says clean | that terminal owns a dead process group; the text is on its tty, not being generated | close that window |
+| `gym env start` hangs or fails for no reason | orphans from a previous run still holding slots | `bash gymclean.sh` first |
 | `gym env init` exits immediately | the directory already exists | `rm -rf` it, but note that also removes its warm venv |
 | Relay registration raises `TypeError` | callback signatures moved between releases | check the middleware guide for the pinned version |
 | Lab 6 cannot find `megatron.bridge` | running outside the container | there is no pip install; use the NGC image |
