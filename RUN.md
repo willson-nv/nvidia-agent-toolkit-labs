@@ -334,6 +334,55 @@ Rollouts: results/mcqa_rollouts.jsonl
 Aggregate metrics: results/mcqa_rollouts_aggregate_metrics.json
 ```
 
+**Then read the rows, not just the mean:**
+
+```bash
+python3 rewards.py --rows results/mcqa_rollouts.jsonl
+```
+
+**Real output** — verified on the box:
+
+```
+   ROW   REWARD   EXPECTED    EXTRACTED
+  ------------------------------------------
+     0     0.00   E           None
+     1     0.00   B           None
+     2     1.00   C           C             hit
+     3     0.00   E           None
+     4     0.00   I           None
+  ------------------------------------------
+  5 rows, mean reward 0.200, 1 scored above zero
+```
+
+**`extracted: None` on four of five rows is the whole setup for Lab 4.** Not a wrong letter
+— *nothing*. The grader could not find an answer at all. This is more convincing on screen
+than the aggregate, because the room can see the four blanks.
+
+> **⚠ Sanity-check before you trust anything downstream.** If the mean is **0.0** with
+> `no_answer 100%`, stop. Your rollouts are empty, and every grading mode in Lab 4 will
+> faithfully report zero for a file with nothing in it — five identical zeros that look like
+> a finding and are not.
+>
+> **This cost us half an hour on the box.** The culprit was a stale `mcqa_rollouts.jsonl`
+> left behind by an earlier failed run. Check the endpoint directly first — five seconds, no
+> Ray, no Gym:
+>
+> ```bash
+> KEY=$(grep policy_api_key env.yaml | awk '{print $2}')
+> MODEL=$(grep policy_model_name env.yaml | awk '{print $2}')
+> curl -s https://integrate.api.nvidia.com/v1/chat/completions \
+>   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+>   -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with the single letter B and nothing else.\"}],\"max_tokens\":10}"
+> ```
+>
+> Returns `B` → the endpoint is fine and the rollouts file is at fault. Clear the derived
+> files and re-run Lab 3:
+>
+> ```bash
+> ls -la results/                              # is mcqa_rollouts.jsonl older than today?
+> rm -f results/rv_* results/mcqa_rollouts*
+> ```
+
 > **🎤 SAY AFTER** *(do not rush to the next lab — this is the setup for everything)*
 >
 > "There it is. **Zero point two.** Six seconds, five tasks, and now we have a number.
@@ -1385,6 +1434,8 @@ Do not debug live.
 | `gym env test` says "no tests ran" | the per-server venv has no pytest | append `pytest` and `pytest-asyncio` to that server's `requirements.txt` |
 | Test fixtures fail with `Input should be a ... NeMoGymResponse` | a `SimpleNamespace` or bare dict is not accepted | build a real `NeMoGymResponse`; eight fields are required |
 | `--resources-server <name>` cannot resolve | the config's top-level key differs from the server name | make them the same string |
+| Every grading mode reports **0.0 / no_answer 100%** | the rollouts file is empty or stale — you are grading nothing | curl the endpoint (Lab 3); then `rm -f results/rv_* results/mcqa_rollouts*` and re-run Lab 3 |
+| `rewards.py` shows a run you did not just do | derived `rv_*` files from an earlier session are still there | `rm -f results/rv_*` before a fresh sweep |
 | Terminal floods with `Failed to get cluster ID from GCS server: TimedOut` | orphaned Ray workers whose head died — they retry forever **and hold worker slots** | `bash gymclean.sh` |
 | Warnings continue after `gymclean.sh` says clean | that terminal owns a dead process group; the text is on its tty, not being generated | close that window |
 | `gym env start` hangs or fails for no reason | orphans from a previous run still holding slots | `bash gymclean.sh` first |
