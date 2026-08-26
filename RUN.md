@@ -897,6 +897,30 @@ box; the outputs are real.**
 
 **Step 1 — scaffold** (~2 min)
 
+> **What a scaffold is, and why the lab starts here.** `gym env init` is a code generator —
+> the same idea as `npm init` or `django-admin startproject`. You give it a name, it writes a
+> working skeleton.
+>
+> | File | What it is |
+> |---|---|
+> | `app.py` | The server — config class, request/response models, and `verify()` |
+> | `configs/<name>.yaml` | How it gets discovered, and which agent and model it wires to |
+> | `data/` | Where your task rows go. Empty except a `.gitignore` |
+> | `tests/test_app.py` | pytest against your verifier — no model, no GPU |
+> | `requirements.txt` | Dependencies for this server's own venv |
+> | `README.md` | A placeholder |
+>
+> **Why generate it live instead of handing them a finished directory?** Because the claim —
+> *an environment is a directory that gets discovered, no registry, no manifest, no packaging
+> step* — is otherwise just an assertion. Hand them a folder and they take your word for it.
+> Let them watch six files appear and then watch `gym env start` find them by name, and they
+> have seen it. Same reason you run the tests rather than saying they pass.
+>
+> **And why we overwrite it in step 2:** writing a real verifier from scratch does not fit in
+> twenty-five minutes. The sequence is *generate the skeleton so they see how little there is
+> → drop in the finished version so they see what it becomes.* Our `app.py` is that same
+> skeleton with the one hole filled.
+
 ```bash
 gym env init --resources-server support_triage
 find resources_servers/support_triage -type f \
