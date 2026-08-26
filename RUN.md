@@ -195,9 +195,25 @@ python relay/lab2_middleware.py
   event=scope  name=demo-agent data=None
 ```
 
+**How to read the trace, line by line:**
+
+| Line | What it is |
+|---|---|
+| `scope demo-agent` *(first)* | the agent scope **opens** — it stays open across *both* calls |
+| `scope search.require_query` ×2 | your guardrail, opening then closing. The closing payload carries the **verdict** |
+| `scope search` *(args)* | the **tool scope opens**, carrying the arguments as recorded — redacted |
+| `[measure] search took 0.3 ms` | **not a Relay event** — your intercept's own `print()`, from inside the wrapper |
+| `scope search` *(hits)* | the **tool scope closes**, carrying the return value |
+| `mark search` *(blocked call)* | a point in time, no duration. Refused |
+| `scope demo-agent` *(last)* | the agent scope **closes**, after everything nested inside it |
+
+**The `mark` printing after the `-> blocked` line is not a bug.** The exception reaches your
+code synchronously; the subscriber prints asynchronously. The ordering between those two is
+not guaranteed and does not matter.
+
 > **🎤 SAY AFTER** *(this is the strongest thirty seconds in Part 1 — do not rush it)*
 >
-> "So — how many `search` scopes in the good call? **Two.** One opening, carrying the
+> "So — how many scopes named `search` in the good call? **Two.** One opening, carrying the
 > arguments. One closing, carrying the result.
 >
 > And in the blocked call? **None.** Zero. There is a `mark` saying it was rejected, and then
