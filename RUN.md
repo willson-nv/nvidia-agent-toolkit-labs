@@ -899,8 +899,17 @@ box; the outputs are real.**
 
 ```bash
 gym env init --resources-server support_triage
-find resources_servers/support_triage -type f | sort
+find resources_servers/support_triage -type f \
+  -not -path '*/.venv/*' -not -path '*/__pycache__/*' | sort
 ```
+
+> **⚠ Those exclusions matter on any run after the first.** Once `gym env test` has run,
+> `resources_servers/support_triage/.venv/` holds **174 packages**, and a bare `find` returns
+> thousands of lines instead of six — which looks broken on stage and buries the point.
+>
+> **Do not delete that venv to tidy the listing.** It is the warm cache, and rebuilding it
+> mid-lab is the single biggest timing risk in this workshop. Seeing `.venv/` there on a
+> rehearsal run is a good sign, not a mess.
 
 **Real output** — six files:
 
@@ -1521,6 +1530,7 @@ Do not debug live.
 | Warnings continue after `gymclean.sh` says clean | that terminal owns a dead process group; the text is on its tty, not being generated | close that window |
 | `gym env start` hangs or fails for no reason | orphans from a previous run still holding slots | `bash gymclean.sh` first |
 | `gym env init` exits immediately | the directory already exists | `rm -rf` it, but note that also removes its warm venv |
+| `find` on a lab dir returns thousands of lines | the per-server `.venv` is built — 174 packages | add `-not -path '*/.venv/*' -not -path '*/__pycache__/*'`; **do not delete the venv** |
 | Relay registration raises `TypeError` | callback signatures moved between releases | check the middleware guide for the pinned version |
 | Lab 6 cannot find `megatron.bridge` | running outside the container | there is no pip install; use the NGC image |
 | `docker pull` unauthorised | no NGC credentials | `docker login nvcr.io` |
