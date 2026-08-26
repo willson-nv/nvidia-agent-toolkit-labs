@@ -2,7 +2,9 @@
 """Read what a gym eval run or reverify actually produced.
 
     python3 rewards.py                      compare every run in results/
+    python3 rewards.py --matrix             every run's per-row extraction, side by side
     python3 rewards.py --rows FILE.jsonl    per-row detail for one run
+    python3 rewards.py --raw                dump every metric key, when the table shows dashes
     python3 rewards.py --dir some/other     look somewhere else
 
 WHY THIS EXISTS
@@ -82,7 +84,7 @@ def find_metrics(obj):
 def label(path):
     """rv_lenient_boxed_aggregate_metrics.json -> lenient_boxed"""
     b = os.path.basename(path)
-    b = b.replace("_aggregate_metrics.json", "")
+    b = b.replace("_aggregate_metrics.json", "").replace(".jsonl", "")
     for p in ("rv_", "mcqa_", "triage_"):
         if b.startswith(p):
             b = b[len(p):]
@@ -156,6 +158,65 @@ def compare(d):
     print()
 
 
+def matrix(d):
+    """Every run's per-row extraction, side by side.
+
+    This is the view that actually shows which mode recovered which row --
+    the aggregate table tells you a mode scored 0.2, this tells you *which two
+    rows* it read and which it did not.
+    """
+    files = sorted(glob.glob(os.path.join(d, "rv_*.jsonl")))
+    base = os.path.join(d, "mcqa_rollouts.jsonl")
+    if os.path.exists(base):
+        files.insert(0, base)
+    files = [f for f in files if not f.endswith("_materialized_inputs.jsonl")]
+    if not files:
+        sys.exit(f"no rollout files in {d}/ — run Lab 3 first")
+
+    runs, expected, width = [], {}, 0
+    for f in files:
+        cells, tot, n = {}, 0.0, 0
+        for i, line in enumerate(open(f)):
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            exp, got = r.get("expected_answer"), r.get("extracted_answer")
+            rw = r.get("reward")
+            if exp is not None:
+                expected[i] = str(exp)
+            if got is None or got == "":
+                cells[i] = "."                      # nothing extracted at all
+            else:
+                cells[i] = str(got) + ("" if str(got) == str(exp) else "*")
+            if isinstance(rw, (int, float)):
+                tot += rw; n += 1
+        runs.append((label(f), cells, tot / n if n else None))
+        width = max(width, len(label(f)))
+        expected.setdefault(0, "?")
+
+    idx = sorted(expected)
+    hdr = "  " + "RUN".ljust(width + 2) + "".join(f"R{i}".rjust(6) for i in idx) + "REWARD".rjust(10)
+    print()
+    print(hdr)
+    print("  " + "EXPECTED".ljust(width + 2) + "".join(expected[i].rjust(6) for i in idx))
+    print("  " + "-" * (len(hdr) - 2))
+    for name, cells, mean in runs:
+        line = "  " + name.ljust(width + 2)
+        line += "".join(cells.get(i, "-").rjust(6) for i in idx)
+        line += ("-" if mean is None else f"{mean:.3f}").rjust(10)
+        print(line)
+    print()
+    print("   .  nothing extracted — the grader could not find an answer")
+    print("   X  extracted that letter, and it matched")
+    print("   X* extracted that letter, and it was WRONG")
+    print()
+    print("  A column of dots that becomes a letter is a row the grader was")
+    print("  failing to READ. A letter with a star is a row the model got wrong.")
+    print("  Those two need completely different fixes.")
+    print()
+
+
 def rows_detail(path):
     if not os.path.exists(path):
         sys.exit(f"no such file: {path}")
@@ -199,11 +260,15 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", default="results", help="where the run outputs are")
     ap.add_argument("--rows", metavar="FILE.jsonl", help="per-row detail for one run")
+    ap.add_argument("--matrix", action="store_true",
+                    help="every run's per-row extraction, side by side")
     ap.add_argument("--raw", action="store_true",
                     help="dump every numeric key found, for when the table shows dashes")
     a = ap.parse_args()
     if a.raw:
         show_raw(a.dir)
+    elif a.matrix:
+        matrix(a.dir)
     elif a.rows:
         rows_detail(a.rows)
     else:

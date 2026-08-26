@@ -589,6 +589,47 @@ If a mode prints `FAILED`, its log has the reason — usually a missing selector
 the default, so it should reproduce the Lab 3 baseline exactly. If it does not, something is
 wrong with the replay rather than with the modes, and the rest of the table means nothing.
 
+#### See what each mode read, row by row
+
+The aggregate says a mode scored 0.2. This says **which rows it managed to read**:
+
+```bash
+python3 rewards.py --matrix
+```
+
+**Real output** — verified on the box:
+
+```
+  RUN                             R0    R1    R2    R3    R4    REWARD
+  EXPECTED                         E     B     C     E     I
+  --------------------------------------------------------------------
+  rollouts                         .     .     C     .     .     0.200
+  strict_single_letter_boxed       .     .     C     .     .     0.200
+  lenient_boxed                    .     .     C     .     .     0.200
+  lenient_answer_colon             .     .     .     .     .     0.000
+  lenient_answer_colon_md          .     .     C     .     .     0.200
+  custom_regex                     E     B     C     E    C*     0.800
+
+   .  nothing extracted — the grader could not find an answer
+   X  extracted that letter, and it matched
+   X* extracted that letter, and it was WRONG
+```
+
+**This is the single best artefact in Lab 4** — put it on screen for the close instead of the
+aggregate table. Three things are visible at once that no summary conveys:
+
+**Four columns of dots.** Rows 0, 1, 3 and 4 were unreadable to every shipped mode. Not
+wrong — *unread*.
+
+**`lenient_answer_colon` lost the only letter on the board.** Its row is dots all the way
+across, including R2, which every other mode read. A mode called *lenient* went backwards.
+
+**The last row is the payoff.** The custom regex turns four dots into letters — and R4 becomes
+`C*`, a star, meaning it extracted an answer and the answer was wrong. **A dot that becomes a
+letter is a row the grader was failing to read. A letter with a star is a row the model got
+wrong. Those need completely different fixes**, and until this table existed you could not
+tell them apart.
+
 > **🎤 SAY AFTER THE SWEEP** *(walk down the four numbers)*
 >
 > "Four grading modes. Strict — 0.2. Lenient boxed — 0.2. Lenient answer-colon — **zero.**
